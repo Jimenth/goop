@@ -1,25 +1,3 @@
---[[
-    DrawingImmediate UI Library
-    Usage:
-        local Library = loadstring(game:HttpGet(""))()
-        local Window = Library:Window({Name = "My Window", Size = Vector2.new(550, 600)})
-        local MainTab = Window:Page({Name = "Main", Columns = 2})
-        local MainSection = MainTab:Section({Name = "Main", Side = 1})
-        MainSection:Toggle({Name = "Toggle", Flag = "MyToggle", Default = true, Callback = function(Value) end})
-
-    Toggle UI:  Insert / RightShift
-    Drag:       Left mouse on title bar
-
-    ColorPicker flags:
-        Library.Flags["Flag"].Color   -> Color3
-        Library.Flags["Flag"].Alpha   -> 0-255
-
-    KeyPicker:
-        Attach to a toggle via Section:KeyPicker({ToggleElement = myToggle, Flag = "MyKey"})
-        Left-click  -> capture next key press
-        Right-click -> context menu (Toggle / Hold mode)
-]]
-
 local Library = {
     Flags = {},
 
@@ -742,7 +720,7 @@ function Window.New(Options)
     Self.Keybinds = {}
     Self.KeybindAnimations = {}
     Self.KeybindPreviousStates = {}
-    Self.Notification = {Text = "", Timer = 0}
+    Self.Notifications = {}
 
     Library.Windows[#Library.Windows + 1] = Self
 
@@ -842,9 +820,12 @@ function Window:Page(Options)
     return Page.New(self, Options)
 end
 
-function Window:Notify(Text)
-    self.Notification.Text = Text
-    self.Notification.Timer = 120
+function Window:Notify(Text, Duration)
+    table.insert(self.Notifications, {
+        Text = Text,
+        Start = tick(),
+        Duration = Duration or 3,
+    })
 end
 
 function Window:BindKey(Name, Code, ElementInstance)
@@ -890,6 +871,52 @@ function Window:RenderKeybindList()
             DrawingImmediate.OutlinedText(Vector2.new(EntryX + 130,EntryY + 3), 11, Library.Appearance.Coloring.Dim,   Animation.Alpha, "[" .. Keybind.Key .. "]", false, Library.Appearance.Font)
             Index = Index + 1
         end
+    end
+end
+
+function Window:RenderNotifications()
+    local BaseHeight = 24
+    local Padding = 6
+    local ToRemove = {}
+    local ScreenW = Library.Viewport.X
+
+    for Index, N in ipairs(self.Notifications) do
+        local Elapsed = tick() - N.Start
+        local Duration = N.Duration
+
+        if Elapsed >= Duration then
+            table.insert(ToRemove, Index)
+        else
+            local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, N.Text)
+            local NW = TextBounds.X + Padding * 2
+            local NH = math.max(BaseHeight, TextBounds.Y + Padding * 2)
+            local BaseX = ScreenW - NW - 10
+            local Y = 10 + (Index - 1) * (NH + 6)
+
+            local OffsetX = 0
+            local FadeIn = 0.4
+            local FadeOut = 0.4
+
+            if Elapsed < FadeIn then
+                local T = Elapsed / FadeIn
+                local Ease = T < 0.5 and 2*T*T or -1 + (4 - 2*T)*T
+                OffsetX = (1 - Ease) * (NW + 10)
+            elseif Elapsed > Duration - FadeOut then
+                local T = (Elapsed - (Duration - FadeOut)) / FadeOut
+                local Ease = T < 0.5 and 2*T*T or -1 + (4 - 2*T)*T
+                OffsetX = Ease * (NW + 10)
+            end
+
+            local X = BaseX + OffsetX
+
+            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, NH), Library.Appearance.Coloring.Black, 0.9)
+            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, 2), Library.Appearance.Coloring.Accent, 1)
+            DrawingImmediate.OutlinedText(Vector2.new(X + Padding, Y + Padding - 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, N.Text, false, Library.Appearance.Font)
+        end
+    end
+
+    for I = #ToRemove, 1, -1 do
+        table.remove(self.Notifications, ToRemove[I])
     end
 end
 
@@ -988,7 +1015,7 @@ function Window:Render()
             local IsHovered = Library:IsHovering(Overlay.X, OptionY, Overlay.Width, 20)
             DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X, OptionY), Vector2.new(Overlay.Width, 20), Library.Appearance.Coloring.Black, 1)
             DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X + 1, OptionY + 1), Vector2.new(Overlay.Width-2, 18), IsHovered and Library.Appearance.Coloring.Border or (Index == DropdownElement.SelectedIndex and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
-            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, 1, Option, false, Library.Appearance.Font)
+            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Option, false, Library.Appearance.Font)
             if Library.Input.MouseClicked and IsHovered then
                 DropdownElement.SelectedIndex = Index
                 DropdownElement.Open = false
@@ -1048,11 +1075,7 @@ function Window:Render()
 
     Library:RenderColorPicker()
 
-    if self.Notification.Timer > 0 then
-        self.Notification.Timer = self.Notification.Timer - 1
-        local Alpha = math.min(self.Notification.Timer / 30, 1)
-        DrawingImmediate.OutlinedText(Vector2.new(X + self.Width/2, Y + self.Height + 8), Library.Appearance.FontSize, Library.Appearance.Coloring.Accent, Alpha, self.Notification.Text, true, Library.Appearance.Font)
-    end
+    self:RenderNotifications()
 
     if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
         Library.ActiveDropdown.Open = false
@@ -1361,7 +1384,7 @@ function Library:Settings()
             ThemePickers["AccentDark"].Color = {Preset.AccentDark.Red * 255, Preset.AccentDark.Green * 255, Preset.AccentDark.Blue * 255}
             ThemePickers["Accent"]:SyncFlag()
             ThemePickers["AccentDark"]:SyncFlag()
-            Win:Notify("Theme: " .. Preset.Name)
+            Win:Notify("Theme: " .. Preset.Name, 2)
         end,
     })
 
@@ -1467,7 +1490,7 @@ function Library:Settings()
 
     local function SaveConfig()
         local Name = NameBox.Value ~= "" and NameBox.Value or State.Selected
-        if not Name or Name == "" then Win:Notify("Enter a config name") return end
+        if not Name or Name == "" then Win:Notify("Enter a config name", 2) return end
         local ok = pcall(writefile, Library.Folders.Configs .. "/" .. Name .. ".lua", Library:ExportFlags())
         if ok then
             State.Selected = Name
@@ -1480,32 +1503,32 @@ function Library:Settings()
 
     local function LoadConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected") return end
+        if not Name then Win:Notify("No config selected", 2) return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found") return end
+        if not isfile(Path) then Win:Notify("File not found", 2) return end
         local fn = loadstring(readfile(Path))
         if not fn then Win:Notify("Parse error") return end
         local ok, Data = pcall(fn)
-        if not ok or type(Data) ~= "table" then Win:Notify("Load error") return end
+        if not ok or type(Data) ~= "table" then Win:Notify("Load error", 2) return end
         Library:ApplyFlags(Data)
-        Win:Notify("Loaded: " .. Name)
+        Win:Notify("Loaded: " .. Name, 2)
     end
 
     local function DeleteConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected") return end
+        if not Name then Win:Notify("No config selected", 2) return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found") return end
+        if not isfile(Path) then Win:Notify("File not found", 2) return end
         delfile(Path)
         NameBox.Value = ""
         RefreshList()
-        Win:Notify("Deleted: " .. Name)
+        Win:Notify("Deleted: " .. Name, 2)
     end
 
     MakeButtonRow("Save", SaveConfig, "Load", LoadConfig)
     MakeButtonRow("Delete", DeleteConfig, "Refresh", function()
         RefreshList()
-        Win:Notify("Refreshed")
+        Win:Notify("Refreshed", 2)
     end)
 
     return SettingsPage
