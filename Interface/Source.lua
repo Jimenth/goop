@@ -1,25 +1,3 @@
---[[
-    DrawingImmediate UI Library
-    Usage:
-        local Library = loadstring(game:HttpGet(""))()
-        local Window = Library:Window({Name = "My Window", Size = Vector2.new(550, 600)})
-        local MainTab = Window:Page({Name = "Main", Columns = 2})
-        local MainSection = MainTab:Section({Name = "Main", Side = 1})
-        MainSection:Toggle({Name = "Toggle", Flag = "MyToggle", Default = true, Callback = function(Value) end})
-
-    Toggle UI:  Insert / RightShift
-    Drag:       Left mouse on title bar
-
-    ColorPicker flags:
-        Library.Flags["Flag"].Color   -> Color3
-        Library.Flags["Flag"].Alpha   -> 0-255
-
-    KeyPicker:
-        Attach to a toggle via Section:KeyPicker({ToggleElement = myToggle, Flag = "MyKey"})
-        Left-click  -> capture next key press
-        Right-click -> context menu (Toggle / Hold mode)
-]]
-
 local Library = {
     Flags = {},
 
@@ -1494,10 +1472,10 @@ function Library:Settings()
         DrawingImmediate.FilledRectangle(Vector2.new(X+2, Y+2), Vector2.new(W-4, BoxH-4), Library.Appearance.Coloring.BackgroundDark, 1)
 
         if #State.List == 0 then
-            local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, "No configs saved")
+            local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 13, "No configs saved")
             DrawingImmediate.OutlinedText(
                 Vector2.new(X + math.floor((W - TB.X) / 2), Y + math.floor((BoxH - TB.Y) / 2)),
-                11, Library.Appearance.Coloring.Dim, 1, "No configs saved", false, Library.Appearance.Font)
+                14, Library.Appearance.Coloring.Dim, 1, "No configs saved", false, Library.Appearance.Font)
             return
         end
 
@@ -1641,7 +1619,7 @@ RunService.Render:Connect(function()
         local WatermarkWidth = #WatermarkText * 7 + 16
         DrawingImmediate.FilledRectangle(Vector2.new(10, 10), Vector2.new(WatermarkWidth, 22), Library.Appearance.Coloring.Black, 0.8)
         DrawingImmediate.FilledRectangle(Vector2.new(10, 10), Vector2.new(WatermarkWidth,  2), Library.Appearance.Coloring.Accent, 1)
-        DrawingImmediate.OutlinedText(   Vector2.new(18, 14), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 0.9, WatermarkText, false, Library.Appearance.Font)
+        DrawingImmediate.OutlinedText(Vector2.new(18, 14), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 0.9, WatermarkText, false, Library.Appearance.Font)
 
         WindowInstance:RenderKeybindList()
         if WindowInstance.Visible then
