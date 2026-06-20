@@ -720,7 +720,7 @@ function Window.New(Options)
     Self.Keybinds = {}
     Self.KeybindAnimations = {}
     Self.KeybindPreviousStates = {}
-    Self.Notifications = {}
+    Self.Notification = {Text = "", Timer = 0}
 
     Library.Windows[#Library.Windows + 1] = Self
 
@@ -820,12 +820,9 @@ function Window:Page(Options)
     return Page.New(self, Options)
 end
 
-function Window:Notify(Text, Duration)
-    table.insert(self.Notifications, {
-        Text = Text,
-        Start = tick(),
-        Duration = Duration or 3,
-    })
+function Window:Notify(Text)
+    self.Notification.Text = Text
+    self.Notification.Timer = 120
 end
 
 function Window:BindKey(Name, Code, ElementInstance)
@@ -871,52 +868,6 @@ function Window:RenderKeybindList()
             DrawingImmediate.OutlinedText(Vector2.new(EntryX + 130,EntryY + 3), 11, Library.Appearance.Coloring.Dim,   Animation.Alpha, "[" .. Keybind.Key .. "]", false, Library.Appearance.Font)
             Index = Index + 1
         end
-    end
-end
-
-function Window:RenderNotifications()
-    local BaseHeight = 24
-    local Padding = 6
-    local ToRemove = {}
-    local ScreenW = Library.Viewport.X
-
-    for Index, N in ipairs(self.Notifications) do
-        local Elapsed = tick() - N.Start
-        local Duration = N.Duration
-
-        if Elapsed >= Duration then
-            table.insert(ToRemove, Index)
-        else
-            local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, N.Text)
-            local NW = TextBounds.X + Padding * 2
-            local NH = math.max(BaseHeight, TextBounds.Y + Padding * 2)
-            local BaseX = ScreenW - NW - 10
-            local Y = 10 + (Index - 1) * (NH + 6)
-
-            local OffsetX = 0
-            local FadeIn = 0.4
-            local FadeOut = 0.4
-
-            if Elapsed < FadeIn then
-                local T = Elapsed / FadeIn
-                local Ease = T < 0.5 and 2*T*T or -1 + (4 - 2*T)*T
-                OffsetX = (1 - Ease) * (NW + 10)
-            elseif Elapsed > Duration - FadeOut then
-                local T = (Elapsed - (Duration - FadeOut)) / FadeOut
-                local Ease = T < 0.5 and 2*T*T or -1 + (4 - 2*T)*T
-                OffsetX = Ease * (NW + 10)
-            end
-
-            local X = BaseX + OffsetX
-
-            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, NH), Library.Appearance.Coloring.Black, 0.9)
-            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, 2), Library.Appearance.Coloring.Accent, 1)
-            DrawingImmediate.OutlinedText(Vector2.new(X + Padding, Y + Padding - 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, N.Text, false, Library.Appearance.Font)
-        end
-    end
-
-    for I = #ToRemove, 1, -1 do
-        table.remove(self.Notifications, ToRemove[I])
     end
 end
 
@@ -1015,7 +966,7 @@ function Window:Render()
             local IsHovered = Library:IsHovering(Overlay.X, OptionY, Overlay.Width, 20)
             DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X, OptionY), Vector2.new(Overlay.Width, 20), Library.Appearance.Coloring.Black, 1)
             DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X + 1, OptionY + 1), Vector2.new(Overlay.Width-2, 18), IsHovered and Library.Appearance.Coloring.Border or (Index == DropdownElement.SelectedIndex and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
-            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Option, false, Library.Appearance.Font)
+            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, 1, Option, false, Library.Appearance.Font)
             if Library.Input.MouseClicked and IsHovered then
                 DropdownElement.SelectedIndex = Index
                 DropdownElement.Open = false
@@ -1075,7 +1026,11 @@ function Window:Render()
 
     Library:RenderColorPicker()
 
-    self:RenderNotifications()
+    if self.Notification.Timer > 0 then
+        self.Notification.Timer = self.Notification.Timer - 1
+        local Alpha = math.min(self.Notification.Timer / 30, 1)
+        DrawingImmediate.OutlinedText(Vector2.new(X + self.Width/2, Y + self.Height + 8), Library.Appearance.FontSize, Library.Appearance.Coloring.Accent, Alpha, self.Notification.Text, true, Library.Appearance.Font)
+    end
 
     if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
         Library.ActiveDropdown.Open = false
@@ -1358,35 +1313,26 @@ function Library:Settings()
     ThemeSection:Label({Name = "Presets", Color = self.Appearance.Coloring.Dim})
 
     local Presets = {
-        {Name = "Purple", Accent = Color3.fromRGB(177,156,217), AccentDark = Color3.fromRGB(139,107,163)},
-        {Name = "Blue", Accent = Color3.fromRGB(100,160,255), AccentDark = Color3.fromRGB( 60,120,200)},
-        {Name = "Red", Accent = Color3.fromRGB(255,100,100), AccentDark = Color3.fromRGB(200, 60, 60)},
-        {Name = "Green", Accent = Color3.fromRGB(100,255,130), AccentDark = Color3.fromRGB( 60,200, 80)},
+        {Name = "Purple", Colors = {177,156,217,139,107,163}},
+        {Name = "B",   Colors = {100,160,255, 60,120,200}},
+        {Name = "R",    Colors = {255,100,100,200, 60, 60}},
+        {Name = "G",  Colors = {100,255,130, 60,200, 80}},
     }
-
-    local PresetByName = {}
-    local PresetNames = {}
     for _, Preset in ipairs(Presets) do
-        PresetByName[Preset.Name] = Preset
-        PresetNames[#PresetNames + 1] = Preset.Name
+        ThemeSection:Button({
+            Name = Preset.Name,
+            Callback = function()
+                local C = Preset.Colors
+                Library.Appearance.Coloring.Accent     = Color3.fromRGB(C[1],C[2],C[3])
+                Library.Appearance.Coloring.AccentDark = Color3.fromRGB(C[4],C[5],C[6])
+                ThemePickers["Accent"].Color     = {C[1],C[2],C[3]}
+                ThemePickers["AccentDark"].Color = {C[4],C[5],C[6]}
+                ThemePickers["Accent"]:SyncFlag()
+                ThemePickers["AccentDark"]:SyncFlag()
+                Win:Notify("Theme: " .. Preset.Name)
+            end,
+        })
     end
-
-    ThemeSection:Dropdown({
-        Name = "Preset",
-        Options = PresetNames,
-        Default = 1,
-        Callback = function(Selection)
-            local Preset = PresetByName[Selection]
-            if not Preset then return end
-            Library.Appearance.Coloring.Accent = Preset.Accent
-            Library.Appearance.Coloring.AccentDark = Preset.AccentDark
-            ThemePickers["Accent"].Color = {Preset.Accent.Red * 255, Preset.Accent.Green * 255, Preset.Accent.Blue * 255}
-            ThemePickers["AccentDark"].Color = {Preset.AccentDark.Red * 255, Preset.AccentDark.Green * 255, Preset.AccentDark.Blue * 255}
-            ThemePickers["Accent"]:SyncFlag()
-            ThemePickers["AccentDark"]:SyncFlag()
-            Win:Notify("Theme: " .. Preset.Name, 2)
-        end,
-    })
 
     local ConfigSection = SettingsPage:Section({Name = "Config", Side = 2})
 
@@ -1490,7 +1436,7 @@ function Library:Settings()
 
     local function SaveConfig()
         local Name = NameBox.Value ~= "" and NameBox.Value or State.Selected
-        if not Name or Name == "" then Win:Notify("Enter a config name", 2) return end
+        if not Name or Name == "" then Win:Notify("Enter a config name") return end
         local ok = pcall(writefile, Library.Folders.Configs .. "/" .. Name .. ".lua", Library:ExportFlags())
         if ok then
             State.Selected = Name
@@ -1503,32 +1449,32 @@ function Library:Settings()
 
     local function LoadConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected", 2) return end
+        if not Name then Win:Notify("No config selected") return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found", 2) return end
+        if not isfile(Path) then Win:Notify("File not found") return end
         local fn = loadstring(readfile(Path))
         if not fn then Win:Notify("Parse error") return end
         local ok, Data = pcall(fn)
-        if not ok or type(Data) ~= "table" then Win:Notify("Load error", 2) return end
+        if not ok or type(Data) ~= "table" then Win:Notify("Load error") return end
         Library:ApplyFlags(Data)
-        Win:Notify("Loaded: " .. Name, 2)
+        Win:Notify("Loaded: " .. Name)
     end
 
     local function DeleteConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected", 2) return end
+        if not Name then Win:Notify("No config selected") return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found", 2) return end
+        if not isfile(Path) then Win:Notify("File not found") return end
         delfile(Path)
         NameBox.Value = ""
         RefreshList()
-        Win:Notify("Deleted: " .. Name, 2)
+        Win:Notify("Deleted: " .. Name)
     end
 
     MakeButtonRow("Save", SaveConfig, "Load", LoadConfig)
     MakeButtonRow("Delete", DeleteConfig, "Refresh", function()
         RefreshList()
-        Win:Notify("Refreshed", 2)
+        Win:Notify("Refreshed")
     end)
 
     return SettingsPage
