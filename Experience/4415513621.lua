@@ -111,7 +111,8 @@ function Module.Function.Render()
                     end
 
                     if Library.Flags["Render Names"] then
-                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Animal.Name, true, "Proggy")
+                        local RealName = Animal:GetAttribute("RealFileName")
+                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
                     end
                 end
             end
@@ -132,6 +133,7 @@ function Module.Function:Teleport(Position)
 end
 
 Library:Settings()
+PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
 task.spawn(function() while true do task.wait(0.5) Module.Function:Cache() end end)
 RunService.Render:Connect(Module.Function.Render)
