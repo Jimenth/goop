@@ -80,13 +80,13 @@ end
 function Module.Function.Render()
     for _, Animal in pairs(Module.Stored.Entities) do
         if Animal and Animal:FindFirstChild("HumanoidRootPart") then
-            if not LocalPlayer then return nil end
+            if not LocalPlayer then continue end
 
             local Character = LocalPlayer.Character
-            if not Character then return nil end
+            if not Character then continue end
 
             local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-            if not HumanoidRootPart then return nil end
+            if not HumanoidRootPart then continue end
 
             if Library.Flags["Use Maximum Render"] and vector.magnitude(Animal:FindFirstChild("HumanoidRootPart").Position - HumanoidRootPart.Position) >= Library.Flags["Maximum Render"].Value then continue end
 
