@@ -111,9 +111,6 @@ function Module.Function.Render()
                     end
 
                     if Library.Flags["Render Names"] then
-                        local HumanoidRootPart = Animal:FindFirstChild("HumanoidRootPart")
-                        if not HumanoidRootPart then continue end
-
                         DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Animal.Name, true, "Proggy")
                     end
                 end
