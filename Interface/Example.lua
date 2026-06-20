@@ -4,7 +4,6 @@ local Window = Library:Window({Name = "Example", Size = Vector2.new(550, 600)})
 local MainTab = Window:Page({Name = "Main", Columns = 2})
 local SettingsTab = Library:Settings()
 
--- Left column
 local MainSection = MainTab:Section({Name = "Main", Side = 1})
 
 local MyToggle = MainSection:Toggle({
@@ -20,9 +19,7 @@ MyToggle:ColorPicker({
     Name = "ESP Color",
     Flag = "ESPColor",
     Default = Color3.fromRGB(255, 0, 0),
-    Callback = function(Color)
-        -- Color3 value
-    end
+    Callback = function(Color) end
 })
 
 MyToggle:ColorPicker({
@@ -30,14 +27,13 @@ MyToggle:ColorPicker({
     Flag = "ESPFill",
     Default = Color3.fromRGB(255, 255, 255),
     DefaultAlpha = 0.5,
-    Callback = function(Color)
-        -- Color3 value
-    end
+    Callback = function(Color) end
 })
 
 MyToggle:KeyPicker({
     Flag = "ESPKey",
     Default = "F",
+    Callback = function() end
 })
 
 MainSection:Slider({
@@ -46,18 +42,17 @@ MainSection:Slider({
     Min = 0,
     Max = 1000,
     Default = 500,
-    Callback = function(Value)
-        -- number value
-    end
+    Callback = function(Value) end
 })
 
 MainSection:Dropdown({
     Name = "ESP Mode",
     Flag = "ESPMode",
     Options = {"Box", "Skeleton", "Filled"},
-    Default = 1,
+    Multi = true,
+    Default = {1, 3},
     Callback = function(Value)
-        -- string value
+        -- Value is a table e.g. {"Box", "Filled"}
     end
 })
 
@@ -70,9 +65,7 @@ MainSection:Textbox({
     Default = "",
     Placeholder = "Enter tag...",
     MaxLength = 32,
-    Callback = function(Value)
-        -- string value
-    end
+    Callback = function(Value) end
 })
 
 MainSection:Button({
@@ -82,7 +75,6 @@ MainSection:Button({
     end
 })
 
--- Right column
 local CombatSection = MainTab:Section({Name = "Combat", Side = 2})
 
 local AimbotToggle = CombatSection:Toggle({
@@ -97,6 +89,7 @@ local AimbotToggle = CombatSection:Toggle({
 AimbotToggle:KeyPicker({
     Flag = "AimbotKey",
     Default = "None",
+    Callback = function() end
 })
 
 CombatSection:Slider({
@@ -105,9 +98,7 @@ CombatSection:Slider({
     Min = 1,
     Max = 360,
     Default = 90,
-    Callback = function(Value)
-        -- number value
-    end
+    Callback = function(Value) end
 })
 
 CombatSection:Slider({
@@ -116,9 +107,7 @@ CombatSection:Slider({
     Min = 1,
     Max = 100,
     Default = 50,
-    Callback = function(Value)
-        -- number value
-    end
+    Callback = function(Value) end
 })
 
 CombatSection:Dropdown({
@@ -127,7 +116,7 @@ CombatSection:Dropdown({
     Options = {"Head", "Neck", "Chest"},
     Default = 1,
     Callback = function(Value)
-        -- string value
+        -- Value is a string e.g. "Head"
     end
 })
 
@@ -138,17 +127,16 @@ CombatSection:Toggle({
     Name = "Silent Aim",
     Flag = "SilentAim",
     Default = false,
-    Callback = function(Value)
-        -- bool value
-    end
+    Callback = function(Value) end
 })
 
--- Accessing flags elsewhere
--- Library.Flags["ESP"]            -> boolean
--- Library.Flags["ESPColor"].Color -> Color3
--- Library.Flags["ESPColor"].Alpha -> 0-1
--- Library.Flags["ESPDistance"].Value -> number
--- Library.Flags["ESPMode"].Value  -> string
--- Library.Flags["ESPTag"]         -> string
--- Library.Flags["ESPKey"].Key     -> string
--- Library.Flags["ESPKey"].Mode    -> "Toggle" or "Hold"
+-- Flag reference:
+-- Library.Flags["ESP"]                 -> boolean
+-- Library.Flags["ESPColor"].Color      -> Color3
+-- Library.Flags["ESPColor"].Alpha      -> number (0-1)
+-- Library.Flags["ESPDistance"].Value   -> number
+-- Library.Flags["ESPMode"].Value       -> table e.g. {"Box", "Filled"}
+-- Library.Flags["ESPTag"]              -> string
+-- Library.Flags["ESPKey"].Key          -> string
+-- Library.Flags["ESPKey"].Mode         -> "Toggle" or "Hold"
+-- Library.Flags["AimbotBone"].Value    -> string e.g. "Head"
