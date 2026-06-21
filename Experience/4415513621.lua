@@ -2,7 +2,6 @@ local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
 
 local LOD = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 local Module = {
