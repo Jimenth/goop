@@ -13,9 +13,7 @@ local Module = {
     
     Stored = {
         Entities = {},
-    },
-
-    Paths = {}
+    }
 }
 
 local Library = loadfile("Source.lua")()
