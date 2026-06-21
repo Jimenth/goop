@@ -35,6 +35,11 @@ AnimalsSection:Separator()
 AnimalsSection:Toggle({Name = "Use Maximum Render", Flag = "Use Maximum Render", Default = false, Callback = function(Value) end})
 AnimalsSection:Slider({Name = "Maximum Render", Flag = "Maximum Render", Min = 0, Max = 1500, Default = 400, Callback = function(Value) end})
 
+-- 
+
+PlayerSection:Toggle({Name = "Loop Ammunition", Flag = "Loop Ammunition", Default = false, Callback = function(Value) end})
+PlayerSection:Separator()
+
 function Module.Function:GetEntityParts(Entity)
     local Parts = {}
     local Count = 0
@@ -50,6 +55,7 @@ function Module.Function:GetEntityParts(Entity)
 end
 
 function Module.Function:Cache()
+    if not LocalPlayer then return nil end
     if not Module.Game.Animals then return nil end
     local Current = {}
 
@@ -128,6 +134,36 @@ function Module.Function:Teleport(Position)
 
     HumanoidRootPart.Position = Position
 end
+
+task.spawn(function()
+    while true do
+        if Library.Flags["Loop Ammunition"] then
+            if not LocalPlayer then continue end
+
+            local Character = LocalPlayer.Character
+            if not Character then continue end
+
+            local Equipped = Character:FindFirstChild("Equiped")
+            if Equipped then
+                local Value = Equipped.Value.Name
+                local Weapon
+                if Equipped.Value.Name then
+                    Weapon = Character:FindFirstChild(Value)
+                end
+                if Weapon then
+                    if Weapon:GetAttribute("MaxAmmo") ~= 600 then
+                        Weapon:SetAttribute("MaxAmmo", 600)
+                    end
+
+                    if Weapon:GetAttribute("Ammo") ~= 600 then
+                        Weapon:SetAttribute("Ammo", 600)
+                    end
+                end
+            end
+        end
+        task.wait(1/15)
+    end
+end)
 
 Library:Settings()
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
