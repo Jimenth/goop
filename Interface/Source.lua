@@ -160,29 +160,25 @@ function Library:UpdateInput()
     Library.Input.Mouse = Library.Service.UserInputService:GetMouseLocation()
     Library.Input.MouseX = Library.Input.Mouse.X
     Library.Input.MouseY = Library.Input.Mouse.Y
-
-    local LeftNow = isleftpressed()
-    local RightNow = isrightpressed and isrightpressed() or false
-
-    Library.Input.MouseClicked = LeftNow and not Library.Input.MousePrevious
-    Library.Input.RightClicked = RightNow and not Library.Input.RightPrevious
-    Library.Input.MouseDown = LeftNow
-    Library.Input.MousePrevious = LeftNow
-    Library.Input.RightPrevious = RightNow
+    Library.Input.MouseClicked = isleftpressed() and not Library.Input.MousePrevious
+    Library.Input.RightClicked = isrightpressed() and not Library.Input.RightPrevious
+    Library.Input.MouseDown = isleftpressed()
+    Library.Input.MousePrevious = isleftpressed()
+    Library.Input.RightPrevious = isrightpressed()
 end
 
 function Library:IsHovering(X, Y, Width, Height)
     return Library.Input.MouseX >= X and Library.Input.MouseX <= X + Width and Library.Input.MouseY >= Y and Library.Input.MouseY <= Y + Height
 end
 
-function Library:DrawToggleVisual(X, Y, Width, IsOn, Label)
+function Library:ToggleVisual(X, Y, State, Text)
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(15, 15), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(13, 13), IsOn and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(11, 11), IsOn and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.Background, 1)
-    DrawingImmediate.OutlinedText(Vector2.new(X + 18, Y + 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Label, false, Library.Appearance.Font)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(13, 13), State and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(11, 11), State and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.OutlinedText(Vector2.new(X + 18, Y + 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
 end
 
-function Library:DrawSwatch(X, Y, Color, Alpha)
+function Library:SwatchVisual(X, Y, Color, Alpha)
     Alpha = Alpha or 255
     if Alpha < 255 then
         DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(14, 6), Color3.fromRGB(160, 160, 160), 1)
@@ -197,8 +193,8 @@ function Library:DrawSwatch(X, Y, Color, Alpha)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(26, 11), Color, Alpha / 255)
 end
 
-function Library:DrawSliderVisual(X, Y, Width, Min, Max, Value, Label)
-    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Label, false, Library.Appearance.Font)
+function Library:SliderVisual(X, Y, Width, Min, Max, Value, Text)
+    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
 
     local BarY = Y + 15
     DrawingImmediate.FilledRectangle(Vector2.new(X, BarY), Vector2.new(Width, 15), Library.Appearance.Coloring.Black, 1)
@@ -216,15 +212,15 @@ function Library:DrawSliderVisual(X, Y, Width, Min, Max, Value, Label)
     DrawingImmediate.OutlinedText(Vector2.new(X + Width / 2 - 15, BarY + 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, ValueText, false, Library.Appearance.Font)
 end
 
-function Library:DrawButtonVisual(X, Y, Width, Label, IsHovered)
+function Library:ButtonVisual(X, Y, Width, Text, IsHovered)
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, 22), Library.Appearance.Coloring.Black, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, 20), Library.Appearance.Coloring.Border, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 18), IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
-    DrawingImmediate.OutlinedText(Vector2.new(X + 4, Y + 4), Library.Appearance.FontSize, IsHovered and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.White, 1, Label, false, Library.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(X + 4, Y + 4), Library.Appearance.FontSize, IsHovered and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
 end
 
-function Library:DrawDropdownVisual(X, Y, Width, Label, SelectedText, IsOpen)
-    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Label, false, Library.Appearance.Font)
+function Library:DropdownVisual(X, Y, Width, Text, SelectedText, IsOpen)
+    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
 
     local BarY = Y + 15
     DrawingImmediate.FilledRectangle(Vector2.new(X, BarY), Vector2.new(Width, 22), Library.Appearance.Coloring.Black, 1)
@@ -234,23 +230,23 @@ function Library:DrawDropdownVisual(X, Y, Width, Label, SelectedText, IsOpen)
     DrawingImmediate.OutlinedText(Vector2.new(X + Width - 15, BarY + 4), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, IsOpen and "-" or "+", false, Library.Appearance.Font)
 end
 
-function Library:DrawSeparator(X, Y, Width)
+function Library:SeparatorVisual(X, Y, Width)
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y + 3), Vector2.new(Width, 1), Library.Appearance.Coloring.Border, 0.5)
 end
 
-function Library:DrawLabel(X, Y, Text, TextColor)
+function Library:LabelVisual(X, Y, Text, TextColor)
     DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, TextColor or Library.Appearance.Coloring.Dim, 1, Text, false, Library.Appearance.Font)
 end
 
-function Library:DrawKeyPickerBadge(X, Y, Label, IsCapturing, IsHovered)
+function Library:KeyPickerVisual(X, Y, Text, IsCapturing, IsHovered)
     local W = Library.LayoutConstants.SwatchWidth
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, 13), Library.Appearance.Coloring.Black, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(W - 2, 11), IsCapturing and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(W - 4, 9), IsCapturing and Library.Appearance.Coloring.Accent or (IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
-    local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Label)
+    local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Text)
     local TextX = X + math.floor((W - TextBounds.X) / 2)
     local TextY = Y + math.floor((13 - TextBounds.Y) / 2)
-    DrawingImmediate.OutlinedText(Vector2.new(TextX, TextY), 11, IsCapturing and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim, 1, Label, false, Library.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(TextX, TextY), 11, IsCapturing and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim, 1, Text, false, Library.Appearance.Font)
     return W
 end
 
@@ -290,20 +286,20 @@ function Element.New(Section, ElementType, Options)
 
         if Self.Multi then
             Self.SelectedIndices = {}
-            local defaults = Options.Default or {}
-            if type(defaults) == "table" then
-                for _, idx in ipairs(defaults) do
-                    Self.SelectedIndices[idx] = true
+            local Defaults = Options.Default or {}
+            if type(Defaults) == "table" then
+                for _, i in ipairs(Defaults) do
+                    Self.SelectedIndices[i] = true
                 end
-            elseif type(defaults) == "number" then
-                Self.SelectedIndices[defaults] = true
+            elseif type(Defaults) == "number" then
+                Self.SelectedIndices[Defaults] = true
             end
             if Self.Flag then
-                local chosen = {}
-                for idx, _ in pairs(Self.SelectedIndices) do
-                    chosen[#chosen + 1] = Self.Options[idx]
+                local Valid = {}
+                for i, _ in pairs(Self.SelectedIndices) do
+                    Valid[#Valid + 1] = Self.Options[i]
                 end
-                Library.Flags[Self.Flag] = {Value = chosen}
+                Library.Flags[Self.Flag] = {Value = Valid}
             end
         else
             Self.SelectedIndex = type(Options.Default) == "number" and Options.Default or 1
@@ -380,12 +376,12 @@ function Element:SyncFlag()
         Library.Flags[self.Flag] = {Value = self.Value}
     elseif self.Type == "Dropdown" then
         if self.Multi then
-            local chosen = {}
-            for idx, selected in pairs(self.SelectedIndices) do
-                if selected then chosen[#chosen + 1] = self.Options[idx] end
+            local Valid = {}
+            for i, selected in pairs(self.SelectedIndices) do
+                if selected then Valid[#Valid + 1] = self.Options[i] end
             end
-            table.sort(chosen)
-            Library.Flags[self.Flag] = { Value = chosen }
+            table.sort(Valid)
+            Library.Flags[self.Flag] = { Value = Valid }
         else
             Library.Flags[self.Flag] = { Value = self.Options[self.SelectedIndex] }
         end
@@ -448,11 +444,11 @@ function Element:Render()
     local AnchorRight = self.SectionRightEdge or (X + Width)
 
     if self.Type == "Toggle" then
-        Library:DrawToggleVisual(X, Y, Width, self.Value, self.Name)
+        Library:ToggleVisual(X, Y, self.Value, self.Name)
 
         for Index, Picker in ipairs(self.AttachedColorPickers) do
             local SX = SwatchX(AnchorRight, Index - 1)
-            Library:DrawSwatch(SX, Y + 1, Color3.fromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3]), Picker.Alpha * 255)
+            Library:SwatchVisual(SX, Y + 1, Color3.fromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3]), Picker.Alpha * 255)
 
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(SX, Y + 1, SW, 13) then
                 Library.Input.Consumed = true
@@ -469,7 +465,7 @@ function Element:Render()
             local RawLabel = Keypicker.Capturing and "..." or Library:FormatMouseButton(Keypicker.BoundKey)
             local BadgeLabel = #RawLabel > 3 and RawLabel:sub(1, 3) or RawLabel
             local Hovered = Library:IsHovering(BX, BY, SW, 13)
-            Library:DrawKeyPickerBadge(BX, BY, BadgeLabel, Keypicker.Capturing, Hovered)
+            Library:KeyPickerVisual(BX, BY, BadgeLabel, Keypicker.Capturing, Hovered)
 
             if Library.Input.MouseClicked and not Library.Input.Consumed and Hovered then
                 Library.Input.Consumed = true
@@ -498,7 +494,7 @@ function Element:Render()
         end
 
         elseif self.Type == "Slider" then
-            Library:DrawSliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name)
+            Library:SliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name)
 
             local BarY = Y + 15
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 15) then
@@ -522,12 +518,12 @@ function Element:Render()
             local DisplayText
 
             if self.Multi then
-                local chosen = {}
-                for idx, selected in pairs(self.SelectedIndices) do
-                    if selected then chosen[#chosen + 1] = self.Options[idx] end
+                local Valid = {}
+                for i, selected in pairs(self.SelectedIndices) do
+                    if selected then Valid[#Valid + 1] = self.Options[i] end
                 end
-                table.sort(chosen)
-                local raw = #chosen == 0 and "None" or table.concat(chosen, ", ")
+                table.sort(Valid)
+                local raw = #Valid == 0 and "None" or table.concat(Valid, ", ")
                 DisplayText = TruncateText(raw, MaxTextWidth, Library.Appearance.Font, Library.Appearance.FontSize)
             else
                 DisplayText = TruncateText(
@@ -538,7 +534,7 @@ function Element:Render()
                 )
             end
 
-            Library:DrawDropdownVisual(X, Y, Width, self.Name, DisplayText, self.Open)
+            Library:DropdownVisual(X, Y, Width, self.Name, DisplayText, self.Open)
 
             local BarY = Y + 15
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 22) then
@@ -559,26 +555,26 @@ function Element:Render()
 
     elseif self.Type == "Button" then
         local IsHovered = Library:IsHovering(X, Y, Width, 22) and not Library.Input.Consumed
-        Library:DrawButtonVisual(X, Y, Width, self.Name, IsHovered)
+        Library:ButtonVisual(X, Y, Width, self.Name, IsHovered)
         if Library.Input.MouseClicked and IsHovered then
             Library.Input.Consumed = true
             self.Callback()
         end
 
     elseif self.Type == "ColorPicker" then
-        Library:DrawLabel(X, Y + 2, self.Name, Library.Appearance.Coloring.White)
+        Library:LabelVisual(X, Y + 2, self.Name, Library.Appearance.Coloring.White)
         local SX = SwatchX(AnchorRight, 0)
-        Library:DrawSwatch(SX, Y + 1, Color3.fromRGB(self.Color[1], self.Color[2], self.Color[3]), self.Alpha * 255)
+        Library:SwatchVisual(SX, Y + 1, Color3.fromRGB(self.Color[1], self.Color[2], self.Color[3]), self.Alpha * 255)
         if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(SX, Y + 1, SW, 13) then
             Library.Input.Consumed = true
             Library:ToggleColorPickerWindow(self, SX - 260, Y + 18)
         end
 
     elseif self.Type == "Separator" then
-        Library:DrawSeparator(X, Y, Width)
+        Library:SeparatorVisual(X, Y, Width)
 
     elseif self.Type == "Label" then
-        Library:DrawLabel(X, Y, self.Name, self.TextColor)
+        Library:LabelVisual(X, Y, self.Name, self.TextColor)
 
     elseif self.Type == "KeyPicker" then
 
@@ -964,10 +960,10 @@ function Window:RenderKeybindList()
 
     for Index, Keypicker in ipairs(ActivePickers) do
         local TE = Keypicker.ToggleElement
-        local IsOn = TE.Value or false
+        local State = TE.Value or false
         local RowY = CY + (Index - 1) * RowH + 2
 
-        local NameColor = IsOn and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim
+        local NameColor = State and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim
         DrawingImmediate.OutlinedText(Vector2.new(CX + 6, RowY + 5), Library.Appearance.FontSize, NameColor, 1, TE.Name, false, Library.Appearance.Font)
 
         local KeyLabel = "[" .. Library:FormatMouseButton(Keypicker.BoundKey) .. "]"
@@ -1142,12 +1138,12 @@ function Window:Render()
                 if DropdownElement.Multi then
                     DropdownElement.SelectedIndices[Index] = not DropdownElement.SelectedIndices[Index] or nil
                     DropdownElement:SyncFlag()
-                    local chosen = {}
-                    for idx, sel in pairs(DropdownElement.SelectedIndices) do
-                        if sel then chosen[#chosen + 1] = DropdownElement.Options[idx] end
+                    local Valid = {}
+                    for i, sel in pairs(DropdownElement.SelectedIndices) do
+                        if sel then Valid[#Valid + 1] = DropdownElement.Options[i] end
                     end
-                    table.sort(chosen)
-                    DropdownElement.Callback(chosen)
+                    table.sort(Valid)
+                    DropdownElement.Callback(Valid)
                 else
                     DropdownElement.SelectedIndex = Index
                     DropdownElement.Open = false
@@ -1434,21 +1430,21 @@ function Library:ApplyFlags(LoadedFlags)
                                 El.SelectedIndices = {}
                                 if type(Saved.Value) == "table" then
                                     for _, savedVal in ipairs(Saved.Value) do
-                                        for idx, opt in ipairs(El.Options) do
+                                        for i, opt in ipairs(El.Options) do
                                             if opt == savedVal then
-                                                El.SelectedIndices[idx] = true
+                                                El.SelectedIndices[i] = true
                                                 break
                                             end
                                         end
                                     end
                                 end
                                 El:SyncFlag()
-                                local chosen = {}
-                                for idx, sel in pairs(El.SelectedIndices) do
-                                    if sel then chosen[#chosen + 1] = El.Options[idx] end
+                                local Valid = {}
+                                for i, sel in pairs(El.SelectedIndices) do
+                                    if sel then Valid[#Valid + 1] = El.Options[i] end
                                 end
-                                table.sort(chosen)
-                                pcall(El.Callback, chosen)
+                                table.sort(Valid)
+                                pcall(El.Callback, Valid)
                             else
                                 for i, Opt in ipairs(El.Options) do
                                     if Opt == Saved.Value then
@@ -1540,8 +1536,8 @@ function Library:Settings()
             if not Preset then return end
             Library.Appearance.Coloring.Accent = Preset.Accent
             Library.Appearance.Coloring.AccentDark = Preset.AccentDark
-            ThemePickers["Accent"].Color = {Preset.Accent.Red * 255, Preset.Accent.Green * 255, Preset.Accent.Blue * 255}
-            ThemePickers["AccentDark"].Color = {Preset.AccentDark.Red * 255, Preset.AccentDark.Green * 255, Preset.AccentDark.Blue * 255}
+            ThemePickers["Accent"].Color = {Preset.Accent.R * 255, Preset.Accent.G * 255, Preset.Accent.B * 255}
+            ThemePickers["AccentDark"].Color = {Preset.AccentDark.R * 255, Preset.AccentDark.G * 255, Preset.AccentDark.B * 255}
             ThemePickers["Accent"]:SyncFlag()
             ThemePickers["AccentDark"]:SyncFlag()
             Win:Notify("Theme: " .. Preset.Name, 2)
@@ -1627,16 +1623,16 @@ function Library:Settings()
         function Row:Render()
             local X, Y, W = self.X, self.Y, self.Width
             local BW = math.floor((W - 3) / 2)
-            local function DrawBtn(BX, Label, Callback)
+            local function DrawBtn(BX, Text, Callback)
                 local Hov = Library:IsHovering(BX, Y, BW, 22) and not Library.Input.Consumed
                 DrawingImmediate.FilledRectangle(Vector2.new(BX, Y), Vector2.new(BW, 22), Library.Appearance.Coloring.Black, 1)
                 DrawingImmediate.FilledRectangle(Vector2.new(BX + 1, Y + 1), Vector2.new(BW - 2, 20), Library.Appearance.Coloring.Border, 1)
                 DrawingImmediate.FilledRectangle(Vector2.new(BX + 2, Y + 2), Vector2.new(BW - 4, 18), Hov and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
-                local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Label)
+                local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Text)
                 DrawingImmediate.OutlinedText(
                     Vector2.new(BX + math.floor((BW - TB.X) / 2), Y + math.floor((22 - TB.Y) / 2)),
                     11, Hov and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.White,
-                    1, Label, false, Library.Appearance.Font)
+                    1, Text, false, Library.Appearance.Font)
                 if Library.Input.MouseClicked and Hov then
                     Library.Input.Consumed = true
                     Callback()
