@@ -53,7 +53,7 @@ local Library = {
 
     Folders = {
         Directory = "Goop",
-        Configs = "Goop/".. tostring(game.GameId).. "/Configs",
+        Configs = "Goop/" .. tostring(game.GameId) .. "/Configs",
     },
 
     Keys = {
@@ -117,7 +117,7 @@ function Library:HSVToRGB(H, S, V)
     local Hue6 = H * 6
     local SectorIndex = math.floor(Hue6) % 6
     local FractionalPart = Hue6 - math.floor(Hue6)
-    
+
     local p = math.floor(V * (1 - S) * 255)
     local q = math.floor(V * (1 - FractionalPart * S) * 255)
     local t = math.floor(V * (1 - (1 - FractionalPart) * S) * 255)
@@ -133,15 +133,15 @@ end
 
 function Library:RGBToHSV(R, G, B)
     R, G, B = R / 255, G / 255, B / 255
-    
+
     local MaxComponent = math.max(R, G, B)
     local MinComponent = math.min(R, G, B)
     local Delta = MaxComponent - MinComponent
-    
+
     local Saturation = MaxComponent == 0 and 0 or Delta / MaxComponent
     local Value = MaxComponent
     local Hue = 0
-    
+
     if Delta > 0 then
         if MaxComponent == R then
             Hue = ((G - B) / Delta) % 6
@@ -152,7 +152,7 @@ function Library:RGBToHSV(R, G, B)
         end
         Hue = Hue / 6
     end
-    
+
     return Hue, Saturation, Value
 end
 
@@ -190,9 +190,9 @@ function Library:DrawSwatch(X, Y, Color, Alpha)
         DrawingImmediate.FilledRectangle(Vector2.new(X, Y + 6), Vector2.new(14, 7), Color3.fromRGB(100, 100, 100), 1)
         DrawingImmediate.FilledRectangle(Vector2.new(X + 14, Y + 6), Vector2.new(14, 7), Color3.fromRGB(160, 160, 160), 1)
     end
-    local DarkR = math.max(Color.R * 255-38, 0)
-    local DarkG = math.max(Color.G * 255-49, 0)
-    local DarkB = math.max(Color.B * 255-54, 0)
+    local DarkR = math.max(Color.R * 255 - 38, 0)
+    local DarkG = math.max(Color.G * 255 - 49, 0)
+    local DarkB = math.max(Color.B * 255 - 54, 0)
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(28, 13), Color3.fromRGB(DarkR, DarkG, DarkB), 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(26, 11), Color, Alpha / 255)
 end
@@ -202,14 +202,14 @@ function Library:DrawSliderVisual(X, Y, Width, Min, Max, Value, Label)
 
     local BarY = Y + 15
     DrawingImmediate.FilledRectangle(Vector2.new(X, BarY), Vector2.new(Width, 15), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(Width-2, 13), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(Width-4, 11), Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(Width - 2, 13), Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(Width - 4, 11), Library.Appearance.Coloring.Background, 1)
 
-    local Fraction  = (Value - Min) / (Max - Min)
+    local Fraction = (Value - Min) / (Max - Min)
     local FillWidth = math.floor((Width - 2) * Fraction)
     if FillWidth > 0 then
         DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(FillWidth, 13), Library.Appearance.Coloring.AccentDark, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(math.max(FillWidth-2, 0), 11), Library.Appearance.Coloring.Accent, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(math.max(FillWidth - 2, 0), 11), Library.Appearance.Coloring.Accent, 1)
     end
 
     local ValueText = math.floor(Value) .. "/" .. Max
@@ -218,8 +218,8 @@ end
 
 function Library:DrawButtonVisual(X, Y, Width, Label, IsHovered)
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, 22), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width-2, 20), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width-4, 18), IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, 20), Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 18), IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
     DrawingImmediate.OutlinedText(Vector2.new(X + 4, Y + 4), Library.Appearance.FontSize, IsHovered and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.White, 1, Label, false, Library.Appearance.Font)
 end
 
@@ -228,10 +228,10 @@ function Library:DrawDropdownVisual(X, Y, Width, Label, SelectedText, IsOpen)
 
     local BarY = Y + 15
     DrawingImmediate.FilledRectangle(Vector2.new(X, BarY), Vector2.new(Width, 22), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(Width-2, 20), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(Width-4, 18), Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(Width - 2, 20), Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(Width - 4, 18), Library.Appearance.Coloring.Background, 1)
     DrawingImmediate.OutlinedText(Vector2.new(X + 4, BarY + 4), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, SelectedText, false, Library.Appearance.Font)
-    DrawingImmediate.OutlinedText(Vector2.new(X + Width-15, BarY + 4), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, IsOpen and "-" or "+", false, Library.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(X + Width - 15, BarY + 4), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, IsOpen and "-" or "+", false, Library.Appearance.Font)
 end
 
 function Library:DrawSeparator(X, Y, Width)
@@ -244,15 +244,17 @@ end
 
 function Library:DrawKeyPickerBadge(X, Y, Label, IsCapturing, IsHovered)
     local W = Library.LayoutConstants.SwatchWidth
-    DrawingImmediate.FilledRectangle(Vector2.new(X, Y),   Vector2.new(W, 13), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(W-2, 11), IsCapturing and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(W-4, 9), IsCapturing and Library.Appearance.Coloring.Accent or (IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, 13), Library.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(W - 2, 11), IsCapturing and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(W - 4, 9), IsCapturing and Library.Appearance.Coloring.Accent or (IsHovered and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
     local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Label)
     local TextX = X + math.floor((W - TextBounds.X) / 2)
     local TextY = Y + math.floor((13 - TextBounds.Y) / 2)
     DrawingImmediate.OutlinedText(Vector2.new(TextX, TextY), 11, IsCapturing and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim, 1, Label, false, Library.Appearance.Font)
     return W
 end
+
+-- // Element \\ --
 
 local Element = {}
 Element.__index = Element
@@ -284,9 +286,33 @@ function Element.New(Section, ElementType, Options)
 
     elseif ElementType == "Dropdown" then
         Self.Options = Options.Options or {}
-        Self.SelectedIndex = Options.Default or 1
+        Self.Multi = Options.Multi or false
+
+        if Self.Multi then
+            Self.SelectedIndices = {}
+            local defaults = Options.Default or {}
+            if type(defaults) == "table" then
+                for _, idx in ipairs(defaults) do
+                    Self.SelectedIndices[idx] = true
+                end
+            elseif type(defaults) == "number" then
+                Self.SelectedIndices[defaults] = true
+            end
+            if Self.Flag then
+                local chosen = {}
+                for idx, _ in pairs(Self.SelectedIndices) do
+                    chosen[#chosen + 1] = Self.Options[idx]
+                end
+                Library.Flags[Self.Flag] = {Value = chosen}
+            end
+        else
+            Self.SelectedIndex = type(Options.Default) == "number" and Options.Default or 1
+            if Self.Flag then
+                Library.Flags[Self.Flag] = {Value = Self.Options[Self.SelectedIndex]}
+            end
+        end
+
         Self.Open = false
-        if Self.Flag then Library.Flags[Self.Flag] = {Value = Self.Options[Self.SelectedIndex]} end
         Self.Height = 42
 
     elseif ElementType == "Button" then
@@ -294,7 +320,7 @@ function Element.New(Section, ElementType, Options)
 
     elseif ElementType == "ColorPicker" then
         local DefaultColor = Options.Default or Color3.fromRGB(177, 156, 217)
-        Self.Color = {DefaultColor.R*255, DefaultColor.G*255, DefaultColor.B*255}
+        Self.Color = {DefaultColor.R * 255, DefaultColor.G * 255, DefaultColor.B * 255}
         Self.Alpha = Options.DefaultAlpha or 1
         if Self.Flag then
             Library.Flags[Self.Flag] = {
@@ -353,7 +379,16 @@ function Element:SyncFlag()
     elseif self.Type == "Slider" then
         Library.Flags[self.Flag] = {Value = self.Value}
     elseif self.Type == "Dropdown" then
-        Library.Flags[self.Flag] = {Value = self.Options[self.SelectedIndex]}
+        if self.Multi then
+            local chosen = {}
+            for idx, selected in pairs(self.SelectedIndices) do
+                if selected then chosen[#chosen + 1] = self.Options[idx] end
+            end
+            table.sort(chosen)
+            Library.Flags[self.Flag] = { Value = chosen }
+        else
+            Library.Flags[self.Flag] = { Value = self.Options[self.SelectedIndex] }
+        end
     elseif self.Type == "ColorPicker" then
         Library.Flags[self.Flag] = {Color = Color3.fromRGB(self.Color[1], self.Color[2], self.Color[3]), Alpha = math.clamp(self.Alpha, 0, 1)}
     elseif self.Type == "Textbox" then
@@ -392,6 +427,20 @@ function Element:KeyPicker(Options)
     self.AttachedKeyPicker = NewPicker
     self.Section.Elements[#self.Section.Elements + 1] = NewPicker
     return NewPicker
+end
+
+local function TruncateText(Text, MaxWidth, Font, FontSize)
+    local Bounds = DrawingImmediate.GetTextBounds(Font, FontSize, Text)
+    if Bounds.X <= MaxWidth then return Text end
+    local Truncated = Text
+    while #Truncated > 0 do
+        Truncated = Truncated:sub(1, -2)
+        local TB = DrawingImmediate.GetTextBounds(Font, FontSize, Truncated .. "...")
+        if TB.X <= MaxWidth then
+            return Truncated .. "..."
+        end
+    end
+    return "..."
 end
 
 function Element:Render()
@@ -448,45 +497,65 @@ function Element:Render()
             self.Callback(self.Value)
         end
 
-    elseif self.Type == "Slider" then
-        Library:DrawSliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name)
+        elseif self.Type == "Slider" then
+            Library:DrawSliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name)
 
-        local BarY = Y + 15
-        if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 15) then
-            Library.ActiveSlider = self
-            Library.Input.Consumed = true
-        end
-        if Library.ActiveSlider == self and Library.Input.MouseDown then
-            local NewValue = math.clamp(math.floor(self.Min + ((Library.Input.MouseX - X - 2) / (Width - 4)) * (self.Max - self.Min)), self.Min, self.Max)
-            if NewValue ~= self.Value then
-                self.Value = NewValue
-                self:SyncFlag()
-                self.Callback(self.Value)
+            local BarY = Y + 15
+            if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 15) then
+                Library.ActiveSlider = self
+                Library.Input.Consumed = true
             end
-        end
-        if not Library.Input.MouseDown and Library.ActiveSlider == self then
-            Library.ActiveSlider = nil
-        end
+            if Library.ActiveSlider == self and Library.Input.MouseDown then
+                local NewValue = math.clamp(math.floor(self.Min + ((Library.Input.MouseX - X - 2) / (Width - 4)) * (self.Max - self.Min)), self.Min, self.Max)
+                if NewValue ~= self.Value then
+                    self.Value = NewValue
+                    self:SyncFlag()
+                    self.Callback(self.Value)
+                end
+            end
+            if not Library.Input.MouseDown and Library.ActiveSlider == self then
+                Library.ActiveSlider = nil
+            end
 
-    elseif self.Type == "Dropdown" then
-        Library:DrawDropdownVisual(X, Y, Width, self.Name, self.Options[self.SelectedIndex], self.Open)
+        elseif self.Type == "Dropdown" then
+            local MaxTextWidth = Width - 20
+            local DisplayText
 
-        local BarY = Y + 15
-        if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 22) then
-            Library.Input.Consumed = true
-            if Library.ActiveDropdown == self then
-                Library.ActiveDropdown = nil
-                self.Open = false
+            if self.Multi then
+                local chosen = {}
+                for idx, selected in pairs(self.SelectedIndices) do
+                    if selected then chosen[#chosen + 1] = self.Options[idx] end
+                end
+                table.sort(chosen)
+                local raw = #chosen == 0 and "None" or table.concat(chosen, ", ")
+                DisplayText = TruncateText(raw, MaxTextWidth, Library.Appearance.Font, Library.Appearance.FontSize)
             else
-                if Library.ActiveDropdown then Library.ActiveDropdown.Open = false end
-                Library.ActiveDropdown = self
-                self.Open = true
+                DisplayText = TruncateText(
+                    self.Options[self.SelectedIndex],
+                    MaxTextWidth,
+                    Library.Appearance.Font,
+                    Library.Appearance.FontSize
+                )
             end
-        end
 
-        if self.Open and Library.ActiveDropdown == self then
-            Library.DropdownOverlay = {X = X, Y = BarY + 22, Width = Width, Element = self}
-        end
+            Library:DrawDropdownVisual(X, Y, Width, self.Name, DisplayText, self.Open)
+
+            local BarY = Y + 15
+            if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 22) then
+                Library.Input.Consumed = true
+                if Library.ActiveDropdown == self then
+                    Library.ActiveDropdown = nil
+                    self.Open = false
+                else
+                    if Library.ActiveDropdown then Library.ActiveDropdown.Open = false end
+                    Library.ActiveDropdown = self
+                    self.Open = true
+                end
+            end
+
+            if self.Open and Library.ActiveDropdown == self then
+                Library.DropdownOverlay = { X = X, Y = BarY + 22, Width = Width, Element = self }
+            end
 
     elseif self.Type == "Button" then
         local IsHovered = Library:IsHovering(X, Y, Width, 22) and not Library.Input.Consumed
@@ -497,10 +566,10 @@ function Element:Render()
         end
 
     elseif self.Type == "ColorPicker" then
-        Library:DrawLabel(X, Y+2, self.Name, Library.Appearance.Coloring.White)
+        Library:DrawLabel(X, Y + 2, self.Name, Library.Appearance.Coloring.White)
         local SX = SwatchX(AnchorRight, 0)
-        Library:DrawSwatch(SX, Y+1, Color3.fromRGB(self.Color[1], self.Color[2], self.Color[3]), self.Alpha * 255)
-        if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(SX, Y+1, SW, 13) then
+        Library:DrawSwatch(SX, Y + 1, Color3.fromRGB(self.Color[1], self.Color[2], self.Color[3]), self.Alpha * 255)
+        if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(SX, Y + 1, SW, 13) then
             Library.Input.Consumed = true
             Library:ToggleColorPickerWindow(self, SX - 260, Y + 18)
         end
@@ -512,13 +581,13 @@ function Element:Render()
         Library:DrawLabel(X, Y, self.Name, self.TextColor)
 
     elseif self.Type == "KeyPicker" then
-        
+
     elseif self.Type == "Textbox" then
         local IsFocused = (Library.Input.FocusedTextbox == self)
 
-        DrawingImmediate.FilledRectangle(Vector2.new(X, Y),   Vector2.new(Width, 22), Library.Appearance.Coloring.Black,  1)
-        DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width-2, 20), IsFocused and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width-4, 18), Library.Appearance.Coloring.Background, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, 22), Library.Appearance.Coloring.Black, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, 20), IsFocused and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 18), Library.Appearance.Coloring.Background, 1)
 
         local DisplayText = self.Value ~= "" and self.Value or self.Placeholder
         local TextColor = self.Value ~= "" and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim
@@ -534,7 +603,7 @@ function Element:Render()
             local PressedKeys = getpressedkeys()
             for _, Key in ipairs(PressedKeys) do
                 if not table.find(self.PrevKeys, Key) then
-                    if Key == "Enter" then 
+                    if Key == "Enter" then
                         Library.Input.FocusedTextbox = nil
                         self.PrevKeys = {}
                         self:SyncFlag()
@@ -554,7 +623,7 @@ function Element:Render()
     end
 end
 
--- // Section Class \\ --
+-- // Section \\ --
 
 local Section = {}
 Section.__index = Section
@@ -628,11 +697,11 @@ function Section:Render(X, Y, Width)
     local ContentHeight = self:GetContentHeight()
     self.Height = ContentHeight
 
-    DrawingImmediate.FilledRectangle(Vector2.new(X,   Y), Vector2.new(Width, self.Height), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width-2, self.Height-2), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width-4, self.Height-4), Library.Appearance.Coloring.BackgroundDark, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width-4, 2), Library.Appearance.Coloring.Accent, 1)
-    DrawingImmediate.OutlinedText( Vector2.new(X + 8, Y + 6), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, self.Name, false, Library.Appearance.Font)
+    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, self.Height), Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, self.Height - 2), Library.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, self.Height - 4), Library.Appearance.Coloring.BackgroundDark, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 2), Library.Appearance.Coloring.Accent, 1)
+    DrawingImmediate.OutlinedText(Vector2.new(X + 5, Y + 6), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, self.Name, false, Library.Appearance.Font)
 
     local CursorX = X + Padding
     local CursorY = Y + HeaderHeight
@@ -649,7 +718,7 @@ function Section:Render(X, Y, Width)
     end
 end
 
--- // Page Class \\ --
+-- // Page \\ --
 
 local Page = {}
 Page.__index = Page
@@ -681,7 +750,7 @@ function Page:Render(X, Y, Width, Height)
             local DivX = X + DivCol * (ColumnWidth + 6) - 4
             DrawingImmediate.FilledRectangle(
                 Vector2.new(DivX, Y + Library.LayoutConstants.SectionPadding),
-                Vector2.new(1, Height - Library.LayoutConstants.SectionPadding * 2),
+                Vector2.new(2, Height - Library.LayoutConstants.SectionPadding * 2),
                 Library.Appearance.Coloring.Border, 0.7
             )
         end
@@ -698,7 +767,7 @@ function Page:Render(X, Y, Width, Height)
     end
 end
 
--- // Window Class \\ --
+-- // Window \\ --
 
 local Window = {}
 Window.__index = Window
@@ -720,7 +789,9 @@ function Window.New(Options)
     Self.Keybinds = {}
     Self.KeybindAnimations = {}
     Self.KeybindPreviousStates = {}
-    Self.Notification = {Text = "", Timer = 0}
+    Self.KeybindListVisible = true
+    Self.Notifications = {}
+    Self.MenuToggleKey = "RightShift"
 
     Library.Windows[#Library.Windows + 1] = Self
 
@@ -728,10 +799,9 @@ function Window.New(Options)
         local PressedKeys = getpressedkeys() or {}
 
         local function IsKeyPressed(TargetKey) return table.find(PressedKeys, TargetKey) ~= nil end
+        local MenuKeyPressed = IsKeyPressed(Self.MenuToggleKey)
 
-        local RightShiftPressed = IsKeyPressed("RightShift")
-
-        if RightShiftPressed and not Self.PreviousToggleState then
+        if MenuKeyPressed and not Self.PreviousToggleState then
             Self.Visible = not Self.Visible
             Self.PreviousToggleState = true
             Library.Input.FocusedTextbox = nil
@@ -745,7 +815,7 @@ function Window.New(Options)
                     end
                 end
             end
-        elseif not RightShiftPressed then
+        elseif not MenuKeyPressed then
             Self.PreviousToggleState = false
         end
 
@@ -820,9 +890,12 @@ function Window:Page(Options)
     return Page.New(self, Options)
 end
 
-function Window:Notify(Text)
-    self.Notification.Text = Text
-    self.Notification.Timer = 120
+function Window:Notify(Text, Duration)
+    table.insert(self.Notifications, {
+        Text = Text,
+        Start = tick(),
+        Duration = Duration or 3,
+    })
 end
 
 function Window:BindKey(Name, Code, ElementInstance)
@@ -831,43 +904,125 @@ function Window:BindKey(Name, Code, ElementInstance)
 end
 
 function Window:RenderKeybindList()
-    if #self.Keybinds == 0 then return end
+    if not self.KeybindListVisible then return end
 
-    local BaseX = Library.Viewport.X - 185
-    local BaseY = 50
-    local Index = 0
-    local AnimationSpeed = 0.12
-
-    local AnyVisible = false
-    for _, Keybind in ipairs(self.Keybinds) do
-        if (self.KeybindAnimations[Keybind.Key].Alpha or 0) > 0.01 then
-            AnyVisible = true; break
+    local ActivePickers = {}
+    for _, P in ipairs(self.Pages) do
+        for _, S in ipairs(P.Sections) do
+            for _, El in ipairs(S.Elements) do
+                if El.Type == "KeyPicker" and El.BoundKey and El.BoundKey ~= "None" and El.ToggleElement then
+                    ActivePickers[#ActivePickers + 1] = El
+                end
+            end
         end
     end
 
-    if AnyVisible then
-        DrawingImmediate.FilledRectangle(Vector2.new(BaseX, BaseY-22), Vector2.new(175, 20), Library.Appearance.Coloring.Black, 0.7)
-        DrawingImmediate.FilledRectangle(Vector2.new(BaseX, BaseY-22), Vector2.new(175, 2), Library.Appearance.Coloring.Accent, 1)
-        DrawingImmediate.OutlinedText(Vector2.new(BaseX + 4, BaseY-18), 11, Library.Appearance.Coloring.White, 0.9, "Keybinds", false, Library.Appearance.Font)
+    if #ActivePickers == 0 then return end
+
+    if not self.KeybindWindow then
+        self.KeybindWindow = {
+            X = 10,
+            Y = Library.Viewport.Y / 2 - (#ActivePickers * 24 + 52) / 2,
+            Width = 260,
+            Dragging = false,
+            DragOffsetX = 0,
+            DragOffsetY = 0,
+        }
     end
 
-    for _, Keybind in ipairs(self.Keybinds) do
-        local Animation = self.KeybindAnimations[Keybind.Key]
-        local IsOn = Keybind.Element.Value or false
-        local TargetX = IsOn and 0 or 120
-        local TargetAlpha = IsOn and 1 or 0
-        Animation.X = Animation.X + (TargetX - Animation.X) * AnimationSpeed
-        Animation.Alpha = Animation.Alpha + (TargetAlpha - Animation.Alpha) * AnimationSpeed
+    local KW = self.KeybindWindow
+    local RowH = 22
+    local HeaderH = 28
+    local Padding = 8
+    local TotalH = HeaderH + #ActivePickers * RowH + Padding
 
-        if Animation.Alpha > 0.01 then
-            local EntryX = BaseX + Animation.X
-            local EntryY = BaseY + Index * 22
-            DrawingImmediate.FilledRectangle(Vector2.new(EntryX, EntryY), Vector2.new(175, 20), Library.Appearance.Coloring.Black, Animation.Alpha * 0.8)
-            DrawingImmediate.FilledRectangle(Vector2.new(EntryX, EntryY), Vector2.new(2, 20), Library.Appearance.Coloring.Accent, Animation.Alpha)
-            DrawingImmediate.OutlinedText(Vector2.new(EntryX + 6, EntryY + 3), 11, Library.Appearance.Coloring.White, Animation.Alpha, Keybind.Element.Name, false, Library.Appearance.Font)
-            DrawingImmediate.OutlinedText(Vector2.new(EntryX + 130,EntryY + 3), 11, Library.Appearance.Coloring.Dim,   Animation.Alpha, "[" .. Keybind.Key .. "]", false, Library.Appearance.Font)
-            Index = Index + 1
+    if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(KW.X, KW.Y, KW.Width, HeaderH) then
+        KW.Dragging = true
+        KW.DragOffsetX = Library.Input.MouseX - KW.X
+        KW.DragOffsetY = Library.Input.MouseY - KW.Y
+        Library.Input.Consumed = true
+    end
+    if not Library.Input.MouseDown then KW.Dragging = false end
+    if KW.Dragging then
+        KW.X = Library.Input.MouseX - KW.DragOffsetX
+        KW.Y = Library.Input.MouseY - KW.DragOffsetY
+    end
+
+    local X, Y, W = KW.X, KW.Y, KW.Width
+
+    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, TotalH), Library.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(W - 2, TotalH - 2), Library.Appearance.Coloring.Accent, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(W - 4, TotalH - 4), Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.OutlinedText(Vector2.new(X + 9, Y + 8), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, "Keybinds", false, Library.Appearance.Font)
+
+    local CX = X + 4
+    local CY = Y + HeaderH
+    local CW = W - 8
+
+    DrawingImmediate.FilledRectangle(Vector2.new(CX, CY), Vector2.new(CW, TotalH - HeaderH - Padding), Library.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX + 1, CY + 1), Vector2.new(CW - 2, TotalH - HeaderH - Padding - 2), Library.Appearance.Coloring.BackgroundDark, 1)
+
+    for Index, Keypicker in ipairs(ActivePickers) do
+        local TE = Keypicker.ToggleElement
+        local IsOn = TE.Value or false
+        local RowY = CY + (Index - 1) * RowH + 2
+
+        local NameColor = IsOn and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim
+        DrawingImmediate.OutlinedText(Vector2.new(CX + 6, RowY + 5), Library.Appearance.FontSize, NameColor, 1, TE.Name, false, Library.Appearance.Font)
+
+        local KeyLabel = "[" .. Library:FormatMouseButton(Keypicker.BoundKey) .. "]"
+        local KB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, KeyLabel)
+        DrawingImmediate.OutlinedText(Vector2.new(CX + CW - KB.X - 6, RowY + 5), Library.Appearance.FontSize, Library.Appearance.Coloring.Accent, 1, KeyLabel, false, Library.Appearance.Font)
+
+        if Index < #ActivePickers then
+            DrawingImmediate.FilledRectangle(Vector2.new(CX + 2, RowY + RowH - 1), Vector2.new(CW - 4, 1), Library.Appearance.Coloring.Border, 0.5)
         end
+    end
+end
+
+function Window:RenderNotifications()
+    local BaseHeight = 24
+    local Padding = 6
+    local ToRemove = {}
+    local ScreenW = Library.Viewport.X
+
+    for Index, N in ipairs(self.Notifications) do
+        local Elapsed = tick() - N.Start
+        local Duration = N.Duration
+
+        if Elapsed >= Duration then
+            table.insert(ToRemove, Index)
+        else
+            local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, N.Text)
+            local NW = TextBounds.X + Padding * 2
+            local NH = math.max(BaseHeight, TextBounds.Y + Padding * 2)
+            local BaseX = ScreenW - NW - 10
+            local Y = 10 + (Index - 1) * (NH + 6)
+
+            local OffsetX = 0
+            local FadeIn = 0.4
+            local FadeOut = 0.4
+
+            if Elapsed < FadeIn then
+                local T = Elapsed / FadeIn
+                local Ease = T < 0.5 and 2 * T * T or -1 + (4 - 2 * T) * T
+                OffsetX = (1 - Ease) * (NW + 10)
+            elseif Elapsed > Duration - FadeOut then
+                local T = (Elapsed - (Duration - FadeOut)) / FadeOut
+                local Ease = T < 0.5 and 2 * T * T or -1 + (4 - 2 * T) * T
+                OffsetX = Ease * (NW + 10)
+            end
+
+            local X = BaseX + OffsetX
+
+            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, NH), Library.Appearance.Coloring.Black, 0.9)
+            DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(NW, 2), Library.Appearance.Coloring.Accent, 1)
+            DrawingImmediate.OutlinedText(Vector2.new(X + Padding, Y + Padding - 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, N.Text, false, Library.Appearance.Font)
+        end
+    end
+
+    for I = #ToRemove, 1, -1 do
+        table.remove(self.Notifications, ToRemove[I])
     end
 end
 
@@ -904,15 +1059,15 @@ function Window:Render()
     end
 
     DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(self.Width, self.Height), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(self.Width-2, self.Height-2), Library.Appearance.Coloring.Accent, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(self.Width-4, self.Height-4), Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(self.Width - 2, self.Height - 2), Library.Appearance.Coloring.Accent, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(self.Width - 4, self.Height - 4), Library.Appearance.Coloring.Background, 1)
     DrawingImmediate.OutlinedText(Vector2.new(X + 9, Y + 8), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, self.Name, false, Library.Appearance.Font)
 
     local CX, CY = X + 9, Y + 26
     local CW, CH = self.Width - 18, self.Height - 35
     DrawingImmediate.FilledRectangle(Vector2.new(CX, CY), Vector2.new(CW, CH), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(CX + 1, CY + 1), Vector2.new(CW-2, CH-2), Library.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(CX + 2, CY + 2), Vector2.new(CW-4, CH-4), Library.Appearance.Coloring.BackgroundDark, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX + 1, CY + 1), Vector2.new(CW - 2, CH - 2), Library.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX + 2, CY + 2), Vector2.new(CW - 4, CH - 4), Library.Appearance.Coloring.BackgroundDark, 1)
 
     local NumTabs = #self.Pages
     local TabGap = 2
@@ -924,10 +1079,10 @@ function Window:Render()
         local TabX = CX + 7 + (Index - 1) * (TabWidth + TabGap)
         local IsActive = (self.CurrentPageIndex == Index)
         DrawingImmediate.FilledRectangle(Vector2.new(TabX, TabY), Vector2.new(TabWidth, 23), Library.Appearance.Coloring.Border, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(TabX + 1, TabY + 1), Vector2.new(TabWidth-2, IsActive and 22 or 21), IsActive and Library.Appearance.Coloring.Background or Library.Appearance.Coloring.BackgroundDark, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(TabX + 1, TabY + 1), Vector2.new(TabWidth - 2, IsActive and 22 or 21), IsActive and Library.Appearance.Coloring.Background or Library.Appearance.Coloring.BackgroundDark, 1)
         if IsActive then
             DrawingImmediate.FilledRectangle(Vector2.new(TabX, TabY + 22), Vector2.new(TabWidth, 9), Library.Appearance.Coloring.Border, 1)
-            DrawingImmediate.FilledRectangle(Vector2.new(TabX + 1, TabY + 22), Vector2.new(TabWidth-2, 9), Library.Appearance.Coloring.Background, 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(TabX + 1, TabY + 22), Vector2.new(TabWidth - 2, 9), Library.Appearance.Coloring.Background, 1)
         end
         local TextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, PageInstance.Name)
         local TextX = TabX + math.floor((TabWidth - TextBounds.X) / 2)
@@ -946,7 +1101,7 @@ function Window:Render()
     local IX, IY = CX + 7, CY + 30
     local IW, IH = CW - 14, CH - 37
     DrawingImmediate.FilledRectangle(Vector2.new(IX, IY), Vector2.new(IW, IH), Library.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(IX + 1, IY + 1), Vector2.new(IW-2, IH-2), Library.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(IX + 1, IY + 1), Vector2.new(IW - 2, IH - 2), Library.Appearance.Coloring.Background, 1)
 
     local CurrentPage = self.Pages[self.CurrentPageIndex]
     if CurrentPage then
@@ -961,23 +1116,47 @@ function Window:Render()
             Overlay.X, Overlay.Y, Overlay.Width, TotalHeight,
             Overlay.X, Overlay.Y - 22, Overlay.Width, 22 + TotalHeight,
         }
+
         for Index, Option in ipairs(DropdownElement.Options) do
             local OptionY = Overlay.Y + (Index - 1) * 20
             local IsHovered = Library:IsHovering(Overlay.X, OptionY, Overlay.Width, 20)
+
+            local IsSelected = DropdownElement.Multi
+                and (DropdownElement.SelectedIndices[Index] == true)
+                or (not DropdownElement.Multi and Index == DropdownElement.SelectedIndex)
+
             DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X, OptionY), Vector2.new(Overlay.Width, 20), Library.Appearance.Coloring.Black, 1)
-            DrawingImmediate.FilledRectangle(Vector2.new(Overlay.X + 1, OptionY + 1), Vector2.new(Overlay.Width-2, 18), IsHovered and Library.Appearance.Coloring.Border or (Index == DropdownElement.SelectedIndex and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background), 1)
-            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, 1, Option, false, Library.Appearance.Font)
+            DrawingImmediate.FilledRectangle(
+                Vector2.new(Overlay.X + 1, OptionY + 1),
+                Vector2.new(Overlay.Width - 2, 18),
+                IsHovered and Library.Appearance.Coloring.Border
+                    or (IsSelected and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background),
+                1
+            )
+
+            local TextColor = IsSelected and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.White
+            DrawingImmediate.OutlinedText(Vector2.new(Overlay.X + 4, OptionY + 3), Library.Appearance.FontSize, TextColor, 1, Option, false, Library.Appearance.Font)
+
             if Library.Input.MouseClicked and IsHovered then
-                DropdownElement.SelectedIndex = Index
-                DropdownElement.Open = false
-                Library.ActiveDropdown = nil
                 Library.Input.Consumed = true
-                DropdownElement:SyncFlag()
-                DropdownElement.Callback(DropdownElement.Options[Index])
+                if DropdownElement.Multi then
+                    DropdownElement.SelectedIndices[Index] = not DropdownElement.SelectedIndices[Index] or nil
+                    DropdownElement:SyncFlag()
+                    local chosen = {}
+                    for idx, sel in pairs(DropdownElement.SelectedIndices) do
+                        if sel then chosen[#chosen + 1] = DropdownElement.Options[idx] end
+                    end
+                    table.sort(chosen)
+                    DropdownElement.Callback(chosen)
+                else
+                    DropdownElement.SelectedIndex = Index
+                    DropdownElement.Open = false
+                    Library.ActiveDropdown = nil
+                    DropdownElement:SyncFlag()
+                    DropdownElement.Callback(DropdownElement.Options[Index])
+                end
             end
         end
-    else
-        Library.LastDropdownRect = nil
     end
 
     if Library.KeyPickerContext then
@@ -988,26 +1167,23 @@ function Window:Render()
         local MenuH = 4 + #{"Toggle", "Hold"} * 22 + 4
 
         DrawingImmediate.FilledRectangle(Vector2.new(MX, MY), Vector2.new(MenuW, MenuH), Library.Appearance.Coloring.Black, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(MX + 1, MY + 1), Vector2.new(MenuW-2, MenuH-2), Library.Appearance.Coloring.Border, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(MX + 2, MY + 2), Vector2.new(MenuW-4, MenuH-4), Library.Appearance.Coloring.BackgroundDark, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(MX + 2, MY + 2), Vector2.new(MenuW-4, 2), Library.Appearance.Coloring.Accent, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(MX + 1, MY + 1), Vector2.new(MenuW - 2, MenuH - 2), Library.Appearance.Coloring.Border, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(MX + 2, MY + 2), Vector2.new(MenuW - 4, MenuH - 4), Library.Appearance.Coloring.BackgroundDark, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(MX + 2, MY + 2), Vector2.new(MenuW - 4, 2), Library.Appearance.Coloring.Accent, 1)
 
         for Index, Mode in ipairs({"Toggle", "Hold"}) do
             local OptionY = MY + 4 + (Index - 1) * 22
-            local IsHovered = Library:IsHovering(MX+4, OptionY, MenuW-8, 20)
+            local IsHovered = Library:IsHovering(MX + 4, OptionY, MenuW - 8, 20)
             local IsActive = (Keypicker.Mode == Mode)
 
-            DrawingImmediate.FilledRectangle(Vector2.new(MX + 4, OptionY), Vector2.new(MenuW-8, 20), Library.Appearance.Coloring.Black,  1)
-            DrawingImmediate.FilledRectangle(Vector2.new(MX + 5, OptionY + 1), Vector2.new(MenuW-10, 18),
-                IsHovered and Library.Appearance.Coloring.Border or Library.Appearance.Coloring.Background, 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(MX + 4, OptionY), Vector2.new(MenuW - 8, 20), Library.Appearance.Coloring.Black, 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(MX + 5, OptionY + 1), Vector2.new(MenuW - 10, 18), IsHovered and Library.Appearance.Coloring.Border or Library.Appearance.Coloring.Background, 1)
 
-            DrawingImmediate.FilledRectangle(Vector2.new(MX + 8,  OptionY + 4), Vector2.new(11, 11), Library.Appearance.Coloring.Black,  1)
-            DrawingImmediate.FilledRectangle(Vector2.new(MX + 9,  OptionY + 5), Vector2.new(9, 9), IsActive and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(MX + 8, OptionY + 4), Vector2.new(11, 11), Library.Appearance.Coloring.Black, 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(MX + 9, OptionY + 5), Vector2.new(9, 9), IsActive and Library.Appearance.Coloring.AccentDark or Library.Appearance.Coloring.Border, 1)
             DrawingImmediate.FilledRectangle(Vector2.new(MX + 10, OptionY + 6), Vector2.new(7, 7), IsActive and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.BackgroundDark, 1)
 
-            DrawingImmediate.OutlinedText(Vector2.new(MX + 23, OptionY + 3), Library.Appearance.FontSize,
-                IsActive and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim,
-                1, Mode, false, Library.Appearance.Font)
+            DrawingImmediate.OutlinedText(Vector2.new(MX + 23, OptionY + 3), Library.Appearance.FontSize, IsActive and Library.Appearance.Coloring.White or Library.Appearance.Coloring.Dim, 1, Mode, false, Library.Appearance.Font)
 
             if Library.Input.MouseClicked and IsHovered then
                 Keypicker.Mode = Mode
@@ -1026,17 +1202,13 @@ function Window:Render()
 
     Library:RenderColorPicker()
 
-    if self.Notification.Timer > 0 then
-        self.Notification.Timer = self.Notification.Timer - 1
-        local Alpha = math.min(self.Notification.Timer / 30, 1)
-        DrawingImmediate.OutlinedText(Vector2.new(X + self.Width/2, Y + self.Height + 8), Library.Appearance.FontSize, Library.Appearance.Coloring.Accent, Alpha, self.Notification.Text, true, Library.Appearance.Font)
-    end
+    self:RenderNotifications()
 
     if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
         Library.ActiveDropdown.Open = false
         Library.ActiveDropdown = nil
     end
-    
+
     for _, P in ipairs(self.Pages) do
         for _, S in ipairs(P.Sections) do
             for _, El in ipairs(S.Elements) do
@@ -1049,7 +1221,7 @@ function Window:Render()
     end
 end
 
--- // Color Picker Window \\ --
+-- // Color Picker \\ --
 
 function Library:ToggleColorPickerWindow(ColorPickerElement, SpawnX, SpawnY)
     if self.ActiveColorPicker == ColorPickerElement then
@@ -1096,36 +1268,36 @@ function Library:RenderColorPicker()
 
     PickerElement.LastRect = {WX, WY, WW, WH}
 
-    DrawingImmediate.FilledRectangle(Vector2.new(WX,   WY), Vector2.new(WW, WH), self.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(WX + 1, WY + 1), Vector2.new(WW-2, WH-2), self.Appearance.Coloring.Border, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(WX + 2, WY + 2), Vector2.new(WW-4, WH-4), self.Appearance.Coloring.Background, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(WX + 2, WY + 2), Vector2.new(WW-4, 2), self.Appearance.Coloring.Accent, 1)
-    DrawingImmediate.OutlinedText(   Vector2.new(WX + 8, WY + 6), self.Appearance.FontSize, self.Appearance.Coloring.White, 1, PickerElement.Name .. " Color", false, self.Appearance.Font)
+    DrawingImmediate.FilledRectangle(Vector2.new(WX, WY), Vector2.new(WW, WH), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(WX + 1, WY + 1), Vector2.new(WW - 2, WH - 2), self.Appearance.Coloring.Border, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(WX + 2, WY + 2), Vector2.new(WW - 4, WH - 4), self.Appearance.Coloring.Background, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(WX + 2, WY + 2), Vector2.new(WW - 4, 2), self.Appearance.Coloring.Accent, 1)
+    DrawingImmediate.OutlinedText(Vector2.new(WX + 8, WY + 6), self.Appearance.FontSize, self.Appearance.Coloring.White, 1, PickerElement.Name .. " Color", false, self.Appearance.Font)
 
     local CloseHovered = self:IsHovering(CloseX, WY + 4, 16, 16)
-    DrawingImmediate.FilledRectangle(Vector2.new(CloseX, WY + 4), Vector2.new(16, 16), CloseHovered and Color3.fromRGB(200, 50, 50) or self.Appearance.Coloring.Background, 1)
-    DrawingImmediate.OutlinedText(Vector2.new(CloseX + 4, WY + 5), self.Appearance.FontSize, self.Appearance.Coloring.White, 1, "X", false, self.Appearance.Font)
+    DrawingImmediate.FilledRectangle(Vector2.new(CloseX, WY + 4), Vector2.new(16, 16), self.Appearance.Coloring.Background, 1)
+    DrawingImmediate.OutlinedText(Vector2.new(CloseX + 4, WY + 5), self.Appearance.FontSize, CloseHovered and self.Appearance.Coloring.Accent or self.Appearance.Coloring.White, 1, "X", false, self.Appearance.Font)
 
     local SVX, SVY = WX + 8, WY + 24
     local SVSize = 170
-    local PixelStep = 4
+    local PixelStep = 8
 
-    DrawingImmediate.FilledRectangle(Vector2.new(SVX-1, SVY-1), Vector2.new(SVSize+2, SVSize+2), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(SVX - 1, SVY - 1), Vector2.new(SVSize + 2, SVSize + 2), self.Appearance.Coloring.Black, 1)
 
-    for PX = 0, SVSize-1, PixelStep do
-        for PY = 0, SVSize-1, PixelStep do
+    for PX = 0, SVSize - 1, PixelStep do
+        for PY = 0, SVSize - 1, PixelStep do
             local S = PX / SVSize
             local V = 1 - (PY / SVSize)
             local R, G, B = self:HSVToRGB(PickerElement.Hue, S, V)
-            DrawingImmediate.FilledRectangle(Vector2.new(SVX+PX, SVY+PY), Vector2.new(PixelStep, PixelStep), Color3.fromRGB(R, G, B), 1)
+            DrawingImmediate.FilledRectangle(Vector2.new(SVX + PX, SVY + PY), Vector2.new(PixelStep, PixelStep), Color3.fromRGB(R, G, B), 1)
         end
     end
 
     local CX = SVX + math.floor(PickerElement.Saturation * (SVSize - 1))
     local CY = SVY + math.floor((1 - PickerElement.Value) * (SVSize - 1))
-    DrawingImmediate.FilledRectangle(Vector2.new(CX-4, CY-4), Vector2.new(9, 9), self.Appearance.Coloring.White, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(CX-3, CY-3), Vector2.new(7, 7), self.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(CX-2, CY-2), Vector2.new(5, 5), Color3.fromRGB(PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3]), 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX - 4, CY - 4), Vector2.new(9, 9), self.Appearance.Coloring.White, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX - 3, CY - 3), Vector2.new(7, 7), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(CX - 2, CY - 2), Vector2.new(5, 5), Color3.fromRGB(PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3]), 1)
 
     if self.Input.MouseClicked and self:IsHovering(SVX, SVY, SVSize, SVSize) then
         PickerElement.DraggingSV = true
@@ -1140,30 +1312,30 @@ function Library:RenderColorPicker()
     if not self.Input.MouseDown then PickerElement.DraggingSV = false end
 
     local PrevX, PrevY = WX + 185, WY + 24
-    DrawingImmediate.FilledRectangle(Vector2.new(PrevX, PrevY),   Vector2.new(55, 40), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(PrevX, PrevY), Vector2.new(55, 40), self.Appearance.Coloring.Black, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(PrevX + 1, PrevY + 1), Vector2.new(53, 38), Color3.fromRGB(PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3]), PickerElement.Alpha)
 
-    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 46), 11, self.Appearance.Coloring.Dim, 1, math.floor(PickerElement.Color[1]) .. ", " .. math.floor(PickerElement.Color[2]), false, self.Appearance.Font)
-    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 60), 11, self.Appearance.Coloring.Dim, 1, tostring(math.floor(PickerElement.Color[3])), false, self.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 46), 13, self.Appearance.Coloring.Dim, 1, math.floor(PickerElement.Color[1]) .. ", " .. math.floor(PickerElement.Color[2]), false, self.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 60), 13, self.Appearance.Coloring.Dim, 1, tostring(math.floor(PickerElement.Color[3])), false, self.Appearance.Font)
     local HexValue = string.format("#%02X%02X%02X", PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3])
-    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 74), 11, self.Appearance.Coloring.Accent, 1, HexValue, false, self.Appearance.Font)
-    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 88), 11, self.Appearance.Coloring.Dim, 1, string.format("A: %.2f", PickerElement.Alpha), false, self.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 74), 13, self.Appearance.Coloring.Accent, 1, HexValue, false, self.Appearance.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(PrevX, PrevY + 88), 13, self.Appearance.Coloring.Dim, 1, string.format("A: %.2f", PickerElement.Alpha), false, self.Appearance.Font)
 
     local HueX, HueY = WX + 8, WY + 200
     local HueW, HueH = 170, 14
     local HueStep = 2
 
-    DrawingImmediate.FilledRectangle(Vector2.new(HueX-1, HueY-1), Vector2.new(HueW+2, HueH+2), self.Appearance.Coloring.Black, 1)
-    for HX = 0, HueW-1, HueStep do
+    DrawingImmediate.FilledRectangle(Vector2.new(HueX - 1, HueY - 1), Vector2.new(HueW + 2, HueH + 2), self.Appearance.Coloring.Black, 1)
+    for HX = 0, HueW - 1, HueStep do
         local H = HX / HueW
         local R, G, B = self:HSVToRGB(H, 1, 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(HueX+HX, HueY), Vector2.new(HueStep, HueH), Color3.fromRGB(R, G, B), 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(HueX + HX, HueY), Vector2.new(HueStep, HueH), Color3.fromRGB(R, G, B), 1)
     end
     local HueCursorX = HueX + math.floor(PickerElement.Hue * (HueW - 1))
-    DrawingImmediate.FilledRectangle(Vector2.new(HueCursorX-2, HueY-2), Vector2.new(5, HueH+4), self.Appearance.Coloring.White, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(HueCursorX-1, HueY-1), Vector2.new(3, HueH+2), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(HueCursorX - 2, HueY - 2), Vector2.new(5, HueH + 4), self.Appearance.Coloring.White, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(HueCursorX - 1, HueY - 1), Vector2.new(3, HueH + 2), self.Appearance.Coloring.Black, 1)
 
-    if self.Input.MouseClicked and self:IsHovering(HueX, HueY-2, HueW, HueH+4) then
+    if self.Input.MouseClicked and self:IsHovering(HueX, HueY - 2, HueW, HueH + 4) then
         PickerElement.DraggingHue = true
     end
     if PickerElement.DraggingHue and self.Input.MouseDown then
@@ -1178,33 +1350,32 @@ function Library:RenderColorPicker()
     local AlphaW, AlphaH = 170, 14
 
     local CheckStep = 7
-    for AX = 0, AlphaW-1, CheckStep do
+    for AX = 0, AlphaW - 1, CheckStep do
         local Dark = (math.floor(AX / CheckStep) % 2 == 0)
         local ChunkW = math.min(CheckStep, AlphaW - AX)
-        DrawingImmediate.FilledRectangle(Vector2.new(AlphaX+AX, AlphaY), Vector2.new(ChunkW, AlphaH/2), Dark and Color3.fromRGB(100,100,100) or Color3.fromRGB(160, 160, 160), 1)
-        DrawingImmediate.FilledRectangle(Vector2.new(AlphaX+AX, AlphaY+AlphaH/2), Vector2.new(ChunkW, AlphaH/2), Dark and Color3.fromRGB(160,160,160) or Color3.fromRGB(100, 100, 100), 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(AlphaX + AX, AlphaY), Vector2.new(ChunkW, AlphaH / 2), Dark and Color3.fromRGB(100, 100, 100) or Color3.fromRGB(160, 160, 160), 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(AlphaX + AX, AlphaY + AlphaH / 2), Vector2.new(ChunkW, AlphaH / 2), Dark and Color3.fromRGB(160, 160, 160) or Color3.fromRGB(100, 100, 100), 1)
     end
 
     local Steps = 20
-    for Step = 0, Steps-1 do
+    for Step = 0, Steps - 1 do
         local Alpha = 1 - (Step / Steps)
         local StepX = AlphaX + math.floor(Step / Steps * AlphaW)
         local StepW = math.floor(AlphaW / Steps) + 1
-        DrawingImmediate.FilledRectangle(Vector2.new(StepX, AlphaY), Vector2.new(StepW, AlphaH),
-            Color3.fromRGB(PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3]), Alpha)
+        DrawingImmediate.FilledRectangle(Vector2.new(StepX, AlphaY), Vector2.new(StepW, AlphaH), Color3.fromRGB(PickerElement.Color[1], PickerElement.Color[2], PickerElement.Color[3]), Alpha)
     end
 
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX-1, AlphaY-1), Vector2.new(AlphaW + 2, AlphaH + 2), self.Appearance.Coloring.Black, 0)
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX-1, AlphaY-1), Vector2.new(AlphaW + 2, 1), self.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX-1, AlphaY+AlphaH), Vector2.new(AlphaW + 2, 1), self.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX-1, AlphaY-1), Vector2.new(1, AlphaH + 2), self.Appearance.Coloring.Black, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX+AlphaW, AlphaY-1), Vector2.new(1, AlphaH + 2), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX - 1, AlphaY - 1), Vector2.new(AlphaW + 2, AlphaH + 2), self.Appearance.Coloring.Black, 0)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX - 1, AlphaY - 1), Vector2.new(AlphaW + 2, 1), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX - 1, AlphaY + AlphaH), Vector2.new(AlphaW + 2, 1), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX - 1, AlphaY - 1), Vector2.new(1, AlphaH + 2), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaX + AlphaW, AlphaY - 1), Vector2.new(1, AlphaH + 2), self.Appearance.Coloring.Black, 1)
 
     local AlphaCursorX = AlphaX + math.floor((1 - PickerElement.Alpha) * (AlphaW - 1))
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaCursorX-2, AlphaY-2), Vector2.new(5, AlphaH + 4), self.Appearance.Coloring.White, 1)
-    DrawingImmediate.FilledRectangle(Vector2.new(AlphaCursorX-1, AlphaY-1), Vector2.new(3, AlphaH + 2), self.Appearance.Coloring.Black, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaCursorX - 2, AlphaY - 2), Vector2.new(5, AlphaH + 4), self.Appearance.Coloring.White, 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(AlphaCursorX - 1, AlphaY - 1), Vector2.new(3, AlphaH + 2), self.Appearance.Coloring.Black, 1)
 
-    if self.Input.MouseClicked and self:IsHovering(AlphaX, AlphaY-2, AlphaW, AlphaH + 4) then
+    if self.Input.MouseClicked and self:IsHovering(AlphaX, AlphaY - 2, AlphaW, AlphaH + 4) then
         PickerElement.DraggingAlpha = true
     end
     if PickerElement.DraggingAlpha and self.Input.MouseDown then
@@ -1218,25 +1389,25 @@ end
 function Library:ExportFlags()
     local Lines = {"return {"}
     for Flag, Value in pairs(self.Flags) do
-        local T = type(Value)
-        if T == "boolean" then
-            Lines[#Lines+1] = string.format('  ["%s"] = %s,', Flag, tostring(Value))
-        elseif T == "number" then
-            Lines[#Lines+1] = string.format('  ["%s"] = %s,', Flag, tostring(Value))
-        elseif T == "table" then
+        local Type = type(Value)
+        if type(Value) == "boolean" then
+            Lines[#Lines + 1] = string.format('  ["%s"] = %s,', Flag, tostring(Value))
+        elseif type(Value) == "number" then
+            Lines[#Lines + 1] = string.format('  ["%s"] = %s,', Flag, tostring(Value))
+        elseif type(Value) == "table" then
             local Parts = {}
             if Value.Color then
-                local C = Value.Color
-                Parts[#Parts+1] = string.format("Color = Color3.fromRGB(%d,%d,%d)", math.floor(C.R*255), math.floor(C.G*255), math.floor(C.B*255))
+                local Color = Value.Color
+                Parts[#Parts + 1] = string.format("Color = Color3.fromRGB(%d,%d,%d)", math.floor(Color.R * 255), math.floor(Color.G * 255), math.floor(Color.B * 255))
             end
-            if Value.Alpha ~= nil then Parts[#Parts+1] = "Alpha = " .. tostring(Value.Alpha) end
-            if Value.Value ~= nil then Parts[#Parts+1] = "Value = " .. (type(Value.Value) == "string" and ('"'..Value.Value..'"') or tostring(Value.Value)) end
-            if Value.Key   ~= nil then Parts[#Parts+1] = 'Key = "' .. tostring(Value.Key) .. '"' end
-            if Value.Mode  ~= nil then Parts[#Parts+1] = 'Mode = "' .. tostring(Value.Mode) .. '"' end
-            Lines[#Lines+1] = string.format('  ["%s"] = {%s},', Flag, table.concat(Parts, ", "))
+            if Value.Alpha ~= nil then Parts[#Parts + 1] = "Alpha = " .. tostring(Value.Alpha) end
+            if Value.Value ~= nil then Parts[#Parts + 1] = "Value = " .. (type(Value.Value) == "string" and ('"' .. Value.Value .. '"') or tostring(Value.Value)) end
+            if Value.Key ~= nil then Parts[#Parts + 1] = 'Key = "' .. tostring(Value.Key) .. '"' end
+            if Value.Mode ~= nil then Parts[#Parts + 1] = 'Mode = "' .. tostring(Value.Mode) .. '"' end
+            Lines[#Lines + 1] = string.format('  ["%s"] = {%s},', Flag, table.concat(Parts, ", "))
         end
     end
-    Lines[#Lines+1] = "}"
+    Lines[#Lines + 1] = "}"
     return table.concat(Lines, "\n")
 end
 
@@ -1247,30 +1418,65 @@ function Library:ApplyFlags(LoadedFlags)
                 for _, El in ipairs(S.Elements) do
                     if El.Flag and LoadedFlags[El.Flag] ~= nil then
                         local Saved = LoadedFlags[El.Flag]
+
                         if El.Type == "Toggle" then
                             El.Value = Saved == true
                             El:SyncFlag()
                             pcall(El.Callback, El.Value)
+
                         elseif El.Type == "Slider" then
                             El.Value = tonumber(Saved.Value) or El.Value
                             El:SyncFlag()
                             pcall(El.Callback, El.Value)
+
                         elseif El.Type == "Dropdown" then
-                            for i, Opt in ipairs(El.Options) do
-                                if Opt == Saved.Value then El.SelectedIndex = i break end
+                            if El.Multi then
+                                El.SelectedIndices = {}
+                                if type(Saved.Value) == "table" then
+                                    for _, savedVal in ipairs(Saved.Value) do
+                                        for idx, opt in ipairs(El.Options) do
+                                            if opt == savedVal then
+                                                El.SelectedIndices[idx] = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                                El:SyncFlag()
+                                local chosen = {}
+                                for idx, sel in pairs(El.SelectedIndices) do
+                                    if sel then chosen[#chosen + 1] = El.Options[idx] end
+                                end
+                                table.sort(chosen)
+                                pcall(El.Callback, chosen)
+                            else
+                                for i, Opt in ipairs(El.Options) do
+                                    if Opt == Saved.Value then
+                                        El.SelectedIndex = i
+                                        break
+                                    end
+                                end
+                                El:SyncFlag()
+                                pcall(El.Callback, El.Options[El.SelectedIndex])
                             end
-                            El:SyncFlag()
-                            pcall(El.Callback, El.Options[El.SelectedIndex])
+
                         elseif El.Type == "ColorPicker" then
                             if Saved.Color then
-                                El.Color = {Saved.Color.R*255, Saved.Color.G*255, Saved.Color.B*255}
+                                El.Color = {Saved.Color.R * 255, Saved.Color.G * 255, Saved.Color.B * 255}
                             end
-                            if Saved.Alpha ~= nil then El.Alpha = Saved.Alpha end
+                            if Saved.Alpha ~= nil then
+                                El.Alpha = Saved.Alpha
+                            end
                             El:SyncFlag()
                             pcall(El.Callback, Color3.fromRGB(El.Color[1], El.Color[2], El.Color[3]))
+
                         elseif El.Type == "KeyPicker" then
-                            if Saved.Key  then El.BoundKey = Saved.Key  end
-                            if Saved.Mode then El.Mode     = Saved.Mode end
+                            if Saved.Key then
+                                El.BoundKey = Saved.Key
+                            end
+                            if Saved.Mode then
+                                El.Mode = Saved.Mode
+                            end
                             El:SyncFlag()
                         end
                     end
@@ -1282,7 +1488,7 @@ end
 
 function Library:Settings()
     assert(#self.Windows > 0, "No windows exist")
-    
+
     local Win = self.Windows[#self.Windows]
     local SettingsPage = Win:Page({Name = "Settings", Columns = 2})
     local ThemeSection = SettingsPage:Section({Name = "Theme", Side = 1})
@@ -1292,7 +1498,7 @@ function Library:Settings()
         {Name = "Accent Dark", Key = "AccentDark"},
         {Name = "Background", Key = "Background"},
         {Name = "Background Dark", Key = "BackgroundDark"},
-        {Name = "Border",  Key = "Border"},
+        {Name = "Border", Key = "Border"},
     }
 
     local ThemePickers = {}
@@ -1310,29 +1516,37 @@ function Library:Settings()
     end
 
     ThemeSection:Separator()
-    ThemeSection:Label({Name = "Presets", Color = self.Appearance.Coloring.Dim})
 
     local Presets = {
-        {Name = "Purple", Colors = {177,156,217,139,107,163}},
-        {Name = "B",   Colors = {100,160,255, 60,120,200}},
-        {Name = "R",    Colors = {255,100,100,200, 60, 60}},
-        {Name = "G",  Colors = {100,255,130, 60,200, 80}},
+        {Name = "Purple", Accent = Color3.fromRGB(177, 156, 217), AccentDark = Color3.fromRGB(139, 107, 163)},
+        {Name = "Blue", Accent = Color3.fromRGB(100, 160, 255), AccentDark = Color3.fromRGB(60, 120, 200)},
+        {Name = "Red", Accent = Color3.fromRGB(255, 100, 100), AccentDark = Color3.fromRGB(200, 60, 60)},
+        {Name = "Green", Accent = Color3.fromRGB(100, 255, 130), AccentDark = Color3.fromRGB(60, 200, 80)},
     }
+
+    local PresetByName = {}
+    local PresetNames = {}
     for _, Preset in ipairs(Presets) do
-        ThemeSection:Button({
-            Name = Preset.Name,
-            Callback = function()
-                local C = Preset.Colors
-                Library.Appearance.Coloring.Accent     = Color3.fromRGB(C[1],C[2],C[3])
-                Library.Appearance.Coloring.AccentDark = Color3.fromRGB(C[4],C[5],C[6])
-                ThemePickers["Accent"].Color     = {C[1],C[2],C[3]}
-                ThemePickers["AccentDark"].Color = {C[4],C[5],C[6]}
-                ThemePickers["Accent"]:SyncFlag()
-                ThemePickers["AccentDark"]:SyncFlag()
-                Win:Notify("Theme: " .. Preset.Name)
-            end,
-        })
+        PresetByName[Preset.Name] = Preset
+        PresetNames[#PresetNames + 1] = Preset.Name
     end
+
+    ThemeSection:Dropdown({
+        Name = "Preset",
+        Options = PresetNames,
+        Default = 1,
+        Callback = function(Selection)
+            local Preset = PresetByName[Selection]
+            if not Preset then return end
+            Library.Appearance.Coloring.Accent = Preset.Accent
+            Library.Appearance.Coloring.AccentDark = Preset.AccentDark
+            ThemePickers["Accent"].Color = {Preset.Accent.Red * 255, Preset.Accent.Green * 255, Preset.Accent.Blue * 255}
+            ThemePickers["AccentDark"].Color = {Preset.AccentDark.Red * 255, Preset.AccentDark.Green * 255, Preset.AccentDark.Blue * 255}
+            ThemePickers["Accent"]:SyncFlag()
+            ThemePickers["AccentDark"]:SyncFlag()
+            Win:Notify("Theme: " .. Preset.Name, 2)
+        end,
+    })
 
     local ConfigSection = SettingsPage:Section({Name = "Config", Side = 2})
 
@@ -1347,7 +1561,7 @@ function Library:Settings()
             for _, Path in ipairs(listfiles(Library.Folders.Configs)) do
                 local Name = Path:match("([^/\\]+)$")
                 if Name and Name:sub(-4) == ".lua" then
-                    State.List[#State.List+1] = Name:sub(1,-5)
+                    State.List[#State.List + 1] = Name:sub(1, -5)
                 end
             end
         end
@@ -1377,21 +1591,21 @@ function Library:Settings()
 
     function ListBox:Render()
         local X, Y, W = self.X, self.Y, self.Width
-        DrawingImmediate.FilledRectangle(Vector2.new(X,   Y),   Vector2.new(W,   BoxH),   Library.Appearance.Coloring.Black,          1)
-        DrawingImmediate.FilledRectangle(Vector2.new(X+1, Y+1), Vector2.new(W-2, BoxH-2), Library.Appearance.Coloring.Border,         1)
-        DrawingImmediate.FilledRectangle(Vector2.new(X+2, Y+2), Vector2.new(W-4, BoxH-4), Library.Appearance.Coloring.BackgroundDark, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, BoxH), Library.Appearance.Coloring.Black, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(W - 2, BoxH - 2), Library.Appearance.Coloring.Border, 1)
+        DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(W - 4, BoxH - 4), Library.Appearance.Coloring.BackgroundDark, 1)
 
         if #State.List == 0 then
-            local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, "No configs saved")
+            local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 13, "No configs saved")
             DrawingImmediate.OutlinedText(
                 Vector2.new(X + math.floor((W - TB.X) / 2), Y + math.floor((BoxH - TB.Y) / 2)),
-                11, Library.Appearance.Coloring.Dim, 1, "No configs saved", false, Library.Appearance.Font)
+                14, Library.Appearance.Coloring.Dim, 1, "No configs saved", false, Library.Appearance.Font)
             return
         end
 
         for i, Name in ipairs(State.List) do
             if i > BoxRows then break end
-            local RY = Y + 3 + (i-1) * RowH
+            local RY = Y + 3 + (i - 1) * RowH
             local IsSelected = (State.Selected == Name)
             local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Name)
             DrawingImmediate.OutlinedText(
@@ -1399,7 +1613,7 @@ function Library:Settings()
                 11, IsSelected and Library.Appearance.Coloring.Accent or Library.Appearance.Coloring.Dim,
                 1, Name, false, Library.Appearance.Font)
 
-            if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X+2, RY, W-4, RowH) then
+            if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X + 2, RY, W - 4, RowH) then
                 Library.Input.Consumed = true
                 State.Selected = Name
                 NameBox.Value = Name
@@ -1407,7 +1621,6 @@ function Library:Settings()
         end
     end
 
-    -- Button rows
     local function MakeButtonRow(LabelA, CallbackA, LabelB, CallbackB)
         local Row = ConfigSection:Label({Name = ""})
         Row.Height = 26
@@ -1416,9 +1629,9 @@ function Library:Settings()
             local BW = math.floor((W - 3) / 2)
             local function DrawBtn(BX, Label, Callback)
                 local Hov = Library:IsHovering(BX, Y, BW, 22) and not Library.Input.Consumed
-                DrawingImmediate.FilledRectangle(Vector2.new(BX,   Y),   Vector2.new(BW,   22), Library.Appearance.Coloring.Black,  1)
-                DrawingImmediate.FilledRectangle(Vector2.new(BX+1, Y+1), Vector2.new(BW-2, 20), Library.Appearance.Coloring.Border, 1)
-                DrawingImmediate.FilledRectangle(Vector2.new(BX+2, Y+2), Vector2.new(BW-4, 18), Hov and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
+                DrawingImmediate.FilledRectangle(Vector2.new(BX, Y), Vector2.new(BW, 22), Library.Appearance.Coloring.Black, 1)
+                DrawingImmediate.FilledRectangle(Vector2.new(BX + 1, Y + 1), Vector2.new(BW - 2, 20), Library.Appearance.Coloring.Border, 1)
+                DrawingImmediate.FilledRectangle(Vector2.new(BX + 2, Y + 2), Vector2.new(BW - 4, 18), Hov and Library.Appearance.Coloring.BackgroundDark or Library.Appearance.Coloring.Background, 1)
                 local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, 11, Label)
                 DrawingImmediate.OutlinedText(
                     Vector2.new(BX + math.floor((BW - TB.X) / 2), Y + math.floor((22 - TB.Y) / 2)),
@@ -1436,7 +1649,7 @@ function Library:Settings()
 
     local function SaveConfig()
         local Name = NameBox.Value ~= "" and NameBox.Value or State.Selected
-        if not Name or Name == "" then Win:Notify("Enter a config name") return end
+        if not Name or Name == "" then Win:Notify("Enter a config name", 2) return end
         local ok = pcall(writefile, Library.Folders.Configs .. "/" .. Name .. ".lua", Library:ExportFlags())
         if ok then
             State.Selected = Name
@@ -1449,33 +1662,67 @@ function Library:Settings()
 
     local function LoadConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected") return end
+        if not Name then Win:Notify("No config selected", 2) return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found") return end
+        if not isfile(Path) then Win:Notify("File not found", 2) return end
         local fn = loadstring(readfile(Path))
         if not fn then Win:Notify("Parse error") return end
         local ok, Data = pcall(fn)
-        if not ok or type(Data) ~= "table" then Win:Notify("Load error") return end
+        if not ok or type(Data) ~= "table" then Win:Notify("Load error", 2) return end
         Library:ApplyFlags(Data)
-        Win:Notify("Loaded: " .. Name)
+        Win:Notify("Loaded: " .. Name, 2)
     end
 
     local function DeleteConfig()
         local Name = State.Selected
-        if not Name then Win:Notify("No config selected") return end
+        if not Name then Win:Notify("No config selected", 2) return end
         local Path = Library.Folders.Configs .. "/" .. Name .. ".lua"
-        if not isfile(Path) then Win:Notify("File not found") return end
+        if not isfile(Path) then Win:Notify("File not found", 2) return end
         delfile(Path)
         NameBox.Value = ""
         RefreshList()
-        Win:Notify("Deleted: " .. Name)
+        Win:Notify("Deleted: " .. Name, 2)
     end
 
     MakeButtonRow("Save", SaveConfig, "Load", LoadConfig)
     MakeButtonRow("Delete", DeleteConfig, "Refresh", function()
         RefreshList()
-        Win:Notify("Refreshed")
+        Win:Notify("Refreshed", 2)
     end)
+
+    local UISection = SettingsPage:Section({Name = "Interface", Side = 1})
+
+    UISection:Toggle({
+        Name = "Show Keybind List",
+        Flag = "UI_KeybindList",
+        Default = true,
+        Callback = function(Value)
+            Win.KeybindListVisible = Value
+        end
+    })
+
+    local MenuKeyPicker = UISection:Toggle({
+        Name = "Menu Toggle Key",
+        Flag = "UI_MenuToggle",
+        Default = false,
+        Callback = function() end
+    })
+
+    MenuKeyPicker:KeyPicker({
+        Flag = "UI_MenuKey",
+        Default = "RightShift",
+        Callback = function() end
+    })
+
+    local _MenuKP = MenuKeyPicker.AttachedKeyPicker
+    if _MenuKP then
+        local _OrigSync = _MenuKP.SyncFlag
+        function _MenuKP:SyncFlag()
+            _OrigSync(self)
+            Win.MenuToggleKey = self.BoundKey
+        end
+        Win.MenuToggleKey = _MenuKP.BoundKey
+    end
 
     return SettingsPage
 end
@@ -1489,16 +1736,15 @@ RunService.Render:Connect(function()
     Library.Input.Consumed = false
     Library.DropdownOverlay = nil
 
-    local Now = tick()
     for _, WindowInstance in ipairs(Library.Windows) do
-        local WatermarkText = WindowInstance.Name .. "  |  " .. math.floor(get_overlay_fps()) .. " fps"
+        local WatermarkText = WindowInstance.Name .. "  |  " .. math.floor(get_overlay_fps()) .. " FPS"
         local WatermarkWidth = #WatermarkText * 7 + 16
         DrawingImmediate.FilledRectangle(Vector2.new(10, 10), Vector2.new(WatermarkWidth, 22), Library.Appearance.Coloring.Black, 0.8)
-        DrawingImmediate.FilledRectangle(Vector2.new(10, 10), Vector2.new(WatermarkWidth,  2), Library.Appearance.Coloring.Accent, 1)
-        DrawingImmediate.OutlinedText(   Vector2.new(18, 14), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 0.9, WatermarkText, false, Library.Appearance.Font)
+        DrawingImmediate.FilledRectangle(Vector2.new(10, 10), Vector2.new(WatermarkWidth, 2), Library.Appearance.Coloring.Accent, 1)
+        DrawingImmediate.OutlinedText(Vector2.new(18, 14), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 0.9, WatermarkText, false, Library.Appearance.Font)
 
+        WindowInstance:RenderKeybindList()
         if WindowInstance.Visible then
-            WindowInstance:RenderKeybindList()
             WindowInstance:Render()
         end
     end
