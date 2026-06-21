@@ -15,9 +15,11 @@ local Module = {
     },
     
     Stored = {
+        Zoom = false,
         Original = {
             Recoil = {},
-            Spread = {}
+            Spread = {},
+            FieldOfView = nil,
         },
 
         Cache = {
@@ -36,12 +38,11 @@ local Module = {
             HumanoidRootPart = nil,
             Position = Vector3.new(0, 0, 0)
         }
-    },
-
-    Paths = {}
+    }
 }
 
 local Library = loadfile("Source.lua")()
+local Offsets = loadfile("Offsets.lua")()
 local Window = Library:Window({Name = "Goop | Project Delta", Size = Vector2.new(550, 600)})
 
 local AimingTab = Window:Page({Name = "Aiming & Ballistics", Columns = 2})
@@ -49,14 +50,15 @@ local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 Library:Settings()
 
 local BallisticSection = AimingTab:Section({Name = "Ballistics", Side = 2})
-BallisticSection:Toggle({Name = "Disable Recoil", Flag = "No Recoil", Default = false, Callback = function(Value) end})
-BallisticSection:Slider({Name = "Recoil Multiplier", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
-BallisticSection:Toggle({Name = "Disable Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
-BallisticSection:Slider({Name = "Drop Multiplier", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+BallisticSection:Toggle({Name = "Modify Recoil", Flag = "No Recoil", Default = false, Callback = function(Value) end})
+BallisticSection:Slider({Name = "Recoil Percentage", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+BallisticSection:Toggle({Name = "Modify Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
+BallisticSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 
 --
 
 local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
+local GameSection = VisualsTab:Section({Name = "Game", Side = 12})
 WorldSection:Toggle({Name = "Render Drops", Flag = "Render Drops", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drop", Flag = "Drop Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Dropdown({Name = "Item Filter", Flag = "Drop Filter", Multi = true, Options = {"Weapons", "Attachments", "Magazines", "Ammo", "Medical", "Armor", "Clothing", "Visors", "Optics", "Melee", "Grenades", "Deployables", "Food", "Keys", "Tools", "Materials", "Electronics", "Valuables", "Maps", "Special"}, Default = {1, 3}, Callback = function(Value) end})
@@ -69,6 +71,10 @@ WorldSection:Slider({Name = "Maximum Render", Flag = "Vehicles Render", Min = 0,
 WorldSection:Separator()
 WorldSection:Toggle({Name = "Render Exits", Flag = "Render Exits", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Exit", Flag = "Exit Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+
+GameSection:Toggle({Name = "Zoom", Flag = "Zoom", Default = false, Callback = function(Value) end})
+GameSection:Toggle({Name = "Zoom Input", Flag = "Zoom Bind", Default = false, Callback = function(Value) if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = Value end}):KeyPicker({ Flag = "Zoom Key", Default = "Z", Callback = function() if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = not Module.Stored.Zoom end})
+GameSection:Slider({Name = "Zoom Amount", Flag = "Zoom Amount", Min = 0, Max = 90, Default = 25, Callback = function(Value) end})
 
 -- 
 
@@ -983,6 +989,8 @@ function Module.Function:Render()
 end
 
 function Module.Function:CacheBallistics()
+    Module.Stored.Original.FieldOfView = Camera.FieldOfView
+
     for _, Caliber in pairs(game.ReplicatedStorage.AmmoTypes:GetChildren()) do
         local Name = Caliber.Name
         if not Module.Stored.Original.Recoil[Name] then
@@ -1134,6 +1142,10 @@ task.spawn(function()
 	end
 end)
 
+function Module.Function:SetFOV(Value)
+    Camera.FieldOfView = Value
+end
+
 function Module.Function:DrawIndicator(Position, Character, Transparency)
     local X = Position.X
     local Y = Position.Y
@@ -1276,6 +1288,12 @@ end
 Module.Function:CacheBallistics()
 RunService.Render:Connect(function()
     Module.Function:Render()
+
+    if Module.Stored.Zoom then
+        memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Library.Flags["Zoom Amount"].Value))
+    else
+        memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Module.Stored.Original.FieldOfView))
+    end
     
     local Entity = Module.Function:GetClosestEntity()
     if not Entity then return end
