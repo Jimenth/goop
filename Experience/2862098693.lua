@@ -75,6 +75,8 @@ WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Min = 0, Ma
 GameSection:Toggle({Name = "Zoom", Flag = "Zoom", Default = false, Callback = function(Value) end})
 GameSection:Toggle({Name = "Zoom Input", Flag = "Zoom Bind", Default = false, Callback = function(Value) if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = Value end}):KeyPicker({ Flag = "Zoom Key", Default = "Z", Callback = function() if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = not Module.Stored.Zoom end})
 GameSection:Slider({Name = "Zoom Amount", Flag = "Zoom Amount", Min = 0, Max = 90, Default = 25, Callback = function(Value) end})
+GameSection:Separator()
+GameSection:Toggle({Name = "Remove Screen Effects", Flag = "Remove Screen Effects", Default = false, Callback = function(Value) end})
 
 -- 
 
@@ -1018,6 +1020,18 @@ end
 task.spawn(function()
 	while true do
 		task.wait(0.5)
+
+        local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        local NoInsetGui = PlayerGui:FindFirstChild("NoInsetGui")
+        local MainFrame = NoInsetGui:FindFirstChild("MainFrame")
+        local ScreenEffects = MainFrame:FindFirstChild("ScreenEffects")
+
+        if Library.Flags["Remove Screen Effects"] then
+            memory.writeu8(ScreenEffects, Offsets.GuiObject.Visible, 0)
+        else
+            memory.writeu8(ScreenEffects, Offsets.GuiObject.Visible, 1)
+        end
+
 		Module.Function:Cache()
 		local RecoilPct = (Library.Flags["No Recoil"] and (Library.Flags["Recoil Amount"] and Library.Flags["Recoil Amount"].Value or 0) or 100) / 100
 		local DropPct = (Library.Flags["No Drop"] and (Library.Flags["Drop Amount"] and Library.Flags["Drop Amount"].Value or 0) or 100) / 100
@@ -1230,6 +1244,41 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
         Vector2.new(BarX + BarW / 2, BarY + (BarH / 2) - 5),
         Library.Appearance.FontSize, C.White, Transparency,
         HealthText, true, Library.Appearance.Font
+    )
+
+    local Kills = 0
+    local Deaths = 0
+    if game.ReplicatedStorage:FindFirstChild("Players") and Character then
+        local Name = nil
+        for _, Player in ipairs(game:GetService("Players"):GetChildren()) do
+            if Player.Character == Character then
+                Name = Player.Name
+                break
+            end
+        end
+
+        if Name then
+            local PlayerFolder = game.ReplicatedStorage:FindFirstChild("Players"):FindFirstChild(Name)
+            if PlayerFolder then
+                local Stats = PlayerFolder:FindFirstChild("Status") and PlayerFolder.Status:FindFirstChild("Journey") and PlayerFolder.Status.Journey:FindFirstChild("Statistics")
+                if Stats then
+                    Kills = Stats:GetAttribute("Kills") or 0
+                    Deaths = Stats:GetAttribute("Deaths") or 0
+                end
+            end
+        end
+    end
+
+    local Ratio = Deaths == 0 and string.format("%.2f", Kills) or string.format("%.2f", Kills / Deaths)
+
+    local KDTextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, "K/D: " .. Ratio)
+    local KDX = BarX + BarW - KDTextBounds.X
+    local KDY = BarY - 15
+
+    DrawingImmediate.OutlinedText(
+        Vector2.new(KDX, KDY),
+        Library.Appearance.FontSize, C.White, Transparency,
+        "K/D: " .. Ratio, false, Library.Appearance.Font
     )
 end
 
