@@ -270,6 +270,7 @@ function Element.New(Section, ElementType, Options)
 
     if ElementType == "Toggle" then
         Self.Value = Options.Default or false
+        Self.HasRealCallback = Options.Callback ~= nil
         if Self.Flag then Library.Flags[Self.Flag] = Self.Value end
         Self.Height = 20
 
@@ -337,6 +338,7 @@ function Element.New(Section, ElementType, Options)
 
     elseif ElementType == "KeyPicker" then
         Self.ToggleElement = Options.ToggleElement
+        Self.HasCallback = Options.Callback ~= nil
         Self.BoundKey = Options.Default or "None"
         Self.Mode = "Toggle"
         Self.Capturing = false
@@ -857,21 +859,28 @@ function Window.New(Options)
 
                     if Keypicker.Mode == "Toggle" then
                         local WasPressedLastFrame = Keypicker.PrevPressed or false
-
                         if KeyIsActive and not WasPressedLastFrame then
-                            TE.Value = not TE.Value
-                            TE:SyncFlag()
-                            TE.Callback(TE.Value)
+                            if Keypicker.HasCallback then
+                                Keypicker.Callback(not TE.Value)
+                            else
+                                TE.Value = not TE.Value
+                                TE:SyncFlag()
+                                TE.Callback(TE.Value)
+                            end
                             Keypicker.PrevPressed = true
                         elseif not KeyIsActive then
                             Keypicker.PrevPressed = false
                         end
 
                     elseif Keypicker.Mode == "Hold" then
-                        if TE.Value ~= KeyIsActive then
-                            TE.Value = KeyIsActive
-                            TE:SyncFlag()
-                            TE.Callback(TE.Value)
+                        if Keypicker.HasCallback then
+                            Keypicker.Callback(KeyIsActive)
+                        else
+                            if TE.Value ~= KeyIsActive then
+                                TE.Value = KeyIsActive
+                                TE:SyncFlag()
+                                TE.Callback(TE.Value)
+                            end
                         end
                     end
                 end
