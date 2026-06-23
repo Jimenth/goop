@@ -15,10 +15,12 @@ local Module = {
     }
 }
 
-
 local Library = loadfile("Source.lua")()
 local Offsets = loadfile("Offsets.lua")()
 local Tween = loadfile("Tween.lua")()
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 local Roles = {
     Knife = {"Murderer", Color3.fromRGB(255, 0, 0), 1},
