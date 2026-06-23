@@ -77,17 +77,17 @@ ExploitsSection:Slider({Name = "Reach Extension", Flag = "Reach Extension", Min 
 
 -- // World Section \\ --
 
-WorldSection:Toggle({Name = "Render Drops", Flag = "Render Drops", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drop", Flag = "Drop Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
+WorldSection:Toggle({Name = "Render Drops", Flag = "Render Drops", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drop", Flag = "Drop Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Dropdown({Name = "Item Filter", Flag = "Drop Filter", Multi = true, Options = {"Weapons", "Attachments", "Magazines", "Ammo", "Medical", "Armor", "Clothing", "Visors", "Optics", "Melee", "Grenades", "Deployables", "Food", "Keys", "Tools", "Materials", "Electronics", "Valuables", "Maps", "Special"}, Default = {1, 3}, Callback = function(Value) end})
 WorldSection:Separator()
-WorldSection:Toggle({Name = "Render Corpses", Flag = "Render Corpses", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Corpse", Flag = "Corpse Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
+WorldSection:Toggle({Name = "Render Corpses", Flag = "Render Corpses", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Corpse", Flag = "Corpse Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Corpses Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Separator()
-WorldSection:Toggle({Name = "Render Vehicles", Flag = "Render Vehicles", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Vehicle", Flag = "Vehicle Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
+WorldSection:Toggle({Name = "Render Vehicles", Flag = "Render Vehicles", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Vehicle", Flag = "Vehicle Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Vehicles Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Separator()
-WorldSection:Toggle({Name = "Render Exits", Flag = "Render Exits", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Exit", Flag = "Exit Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
+WorldSection:Toggle({Name = "Render Exits", Flag = "Render Exits", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Exit", Flag = "Exit Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 
 -- // Game Section \\ --
