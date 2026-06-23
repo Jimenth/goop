@@ -55,8 +55,8 @@ VehiclesSection:Toggle({Name = "Use Occupied Color", Flag = "Use Occupied Color"
 -- // Modules Section \\ --
 
 ModulesSection:Toggle({Name = "Enabled", Flag = "Render Modules", Default = false, Callback = function(Value) end})
-ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), DefaultAlpha = 0.5, Callback = function(Color) end})
-ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 0.5, Callback = function(Color) end})
+ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 0.5, Callback = function(Color) end})
+ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 0.5, Callback = function(Color) end})
 
 -- // Drone Section \\ --
 
