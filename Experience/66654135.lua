@@ -39,11 +39,11 @@ local AutofarmSection = MainTab:Section({Name = "Automation", Side = 2})
 
 local RenderRoles = VisualsSection:Toggle({ Name = "Render Roles", Flag = "Render Roles", Default = false, Callback = function(Value) end })
 RenderRoles:KeyPicker({ Name = "Role Key", Flag = "Role Key", Default = "P", Callback = function(Key) end })
-RenderRoles:ColorPicker({ Name = "Sheriff", Flag = "Sheriff Color", Default = Color3.fromRGB(0, 0, 255), DefaultAlpha = 1, Callback = function(Color) Roles.Gun[2] = Color end })
-RenderRoles:ColorPicker({ Name = "Murderer", Flag = "Murderer Color", Default = Color3.fromRGB(255, 0, 0), DefaultAlpha = 1, Callback = function(Color) Roles.Knife[2] = Color end })
+RenderRoles:ColorPicker({ Name = "Sheriff", Flag = "Sheriff Color", Default = Color3.fromRGB(0, 0, 255), Alpha = 1, Callback = function(Color) Roles.Gun[2] = Color end })
+RenderRoles:ColorPicker({ Name = "Murderer", Flag = "Murderer Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 1, Callback = function(Color) Roles.Knife[2] = Color end })
 
 local RenderGun = VisualsSection:Toggle({ Name = "Render Gun", Flag = "Render Gun", Default = false, Callback = function(Value) end })
-RenderGun:ColorPicker({ Name = "Gun Color", Flag = "Gun Color", Default = Color3.fromRGB(0, 255, 0), DefaultAlpha = 1, Callback = function(Color) end })
+RenderGun:ColorPicker({ Name = "Gun Color", Flag = "Gun Color", Default = Color3.fromRGB(0, 255, 0), Alpha = 1, Callback = function(Color) end })
 
 -- // Functions \\ --
 
