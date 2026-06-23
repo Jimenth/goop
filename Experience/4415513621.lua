@@ -1,22 +1,7 @@
-local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
-
-local LocalPlayer = Players.LocalPlayer
-
-local LOD = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
-local Module = {
-    Function = {},
-
-    Game = {
-        Animals = Workspace:FindFirstChild("Living") and Workspace:FindFirstChild("Living").Animals
-    },
-    
-    Stored = {
-        Entities = {},
-    }
-}
-
 local Library = loadfile("Source.lua")()
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 -- // Interface \\ --
 
@@ -39,6 +24,26 @@ AnimalsSection:Slider({Name = "Maximum Render", Flag = "Maximum Render", Min = 0
 
 PlayerSection:Toggle({Name = "Loop Ammunition", Flag = "Loop Ammunition", Default = false, Callback = function(Value) end})
 PlayerSection:Separator()
+
+--
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local LOD = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
+local Module = {
+    Function = {},
+
+    Game = {
+        Animals = Workspace:FindFirstChild("Living") and Workspace:FindFirstChild("Living").Animals
+    },
+    
+    Stored = {
+        Entities = {},
+    }
+}
 
 function Module.Function:GetEntityParts(Entity)
     local Parts = {}
