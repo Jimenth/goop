@@ -2,7 +2,9 @@ local Library = loadfile("Source.lua")()
 local Window = Library:Window({Name = "Example", Size = Vector2.new(550, 600)})
 
 local MainTab = Window:Page({Name = "Main", Columns = 2})
-local SettingsTab = Library:Settings()
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 local MainSection = MainTab:Section({Name = "Main", Side = 1})
 
@@ -29,7 +31,7 @@ MyToggle:ColorPicker({
     DefaultAlpha = 0.5,
     Callback = function(Color) end
 })
-
+ 
 MyToggle:KeyPicker({
     Flag = "ESPKey",
     Default = "F",
