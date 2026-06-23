@@ -332,10 +332,15 @@ function Library:SwatchVisual(X, Y, Color, Alpha)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(24, 9), Color, Alpha / 255)
 end
 
-function Library:SliderVisual(X, Y, Width, Min, Max, Value, Text)
-    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
+function Library:SliderVisual(X, Y, Width, Min, Max, Value, Text, Suffix)
+    local BarY
+    if Text ~= nil and Text ~= "" then
+        DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, Text, false, Library.Appearance.Font)
+        BarY = Y + 15
+    else
+        BarY = Y
+    end
 
-    local BarY = Y + 15
     DrawingImmediate.FilledRectangle(Vector2.new(X, BarY), Vector2.new(Width, 15), Library.Appearance.Coloring.Black, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 1, BarY + 1), Vector2.new(Width - 2, 13), Library.Appearance.Coloring.Border, 1)
     DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(Width - 4, 11), Library.Appearance.Coloring.Background, 1)
@@ -347,8 +352,11 @@ function Library:SliderVisual(X, Y, Width, Min, Max, Value, Text)
         DrawingImmediate.FilledRectangle(Vector2.new(X + 2, BarY + 2), Vector2.new(math.max(FillWidth - 2, 0), 11), Library.Appearance.Coloring.Accent, 1)
     end
 
-    local ValueText = math.floor(Value) .. "/" .. Max
-    DrawingImmediate.OutlinedText(Vector2.new(X + Width / 2 - 15, BarY + 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, ValueText, false, Library.Appearance.Font)
+    local SuffixStr = (Suffix ~= nil and Suffix ~= "") and Suffix or ""
+    local ValueText = tostring(Value) .. "/" .. tostring(Max) .. SuffixStr
+
+    local TB = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, ValueText)
+    DrawingImmediate.OutlinedText(Vector2.new(X + math.floor((Width - TB.X) / 2), BarY + 1), Library.Appearance.FontSize, Library.Appearance.Coloring.White, 1, ValueText, false, Library.Appearance.Font)
 end
 
 function Library:ButtonVisual(X, Y, Width, Text, IsHovered)
@@ -417,8 +425,10 @@ function Element.New(Section, ElementType, Options)
         Self.Min = Options.Min or 0
         Self.Max = Options.Max or 100
         Self.Value = Options.Default or Self.Min
+        Self.Decimals = (Options.Decimals ~= nil) and Options.Decimals or 1
+        Self.Suffix = (Options.Suffix ~= nil and Options.Suffix ~= "") and Options.Suffix or ""
         if Self.Flag then Library.Flags[Self.Flag] = {Value = Self.Value} end
-        Self.Height = 35
+        Self.Height = (Self.Name ~= "") and 35 or 20
 
     elseif ElementType == "Dropdown" then
         Self.Options = Options.Options or {}
@@ -457,7 +467,7 @@ function Element.New(Section, ElementType, Options)
     elseif ElementType == "ColorPicker" then
         local DefaultColor = Options.Default or Color3.fromRGB(177, 156, 217)
         Self.Color = {DefaultColor.R * 255, DefaultColor.G * 255, DefaultColor.B * 255}
-        Self.Alpha = Options.DefaultAlpha or 1
+        Self.Alpha = Options.Alpha or 1
         if Self.Flag then
             Library.Flags[Self.Flag] = {
                 Color = DefaultColor,
@@ -634,15 +644,20 @@ function Element:Render()
         end
 
         elseif self.Type == "Slider" then
-            Library:SliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name)
+            Library:SliderVisual(X, Y, Width, self.Min, self.Max, self.Value, self.Name, self.Suffix)
 
-            local BarY = Y + 15
+            local BarY = (self.Name ~= "") and (Y + 15) or Y
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 15) then
                 Library.ActiveSlider = self
                 Library.Input.Consumed = true
             end
             if Library.ActiveSlider == self and Library.Input.MouseDown then
-                local NewValue = math.clamp(math.floor(self.Min + ((Library.Input.MouseX - X - 2) / (Width - 4)) * (self.Max - self.Min)), self.Min, self.Max)
+                local Raw = self.Min + ((Library.Input.MouseX - X - 2) / (Width - 4)) * (self.Max - self.Min)
+                local Stepped = math.floor(Raw / self.Decimals + 0.5) * self.Decimals
+                local NewValue = math.clamp(Stepped, self.Min, self.Max)
+                -- Round to avoid floating-point display noise
+                local Precision = math.max(0, math.ceil(-math.log10(self.Decimals + 1e-9)))
+                NewValue = tonumber(string.format("%." .. Precision .. "f", NewValue))
                 if NewValue ~= self.Value then
                     self.Value = NewValue
                     self:SyncFlag()
@@ -1741,7 +1756,7 @@ function Library:StyleWindow()
             Name = Def.Name,
             Flag = "Theme_" .. Def.Key,
             Default = self.Appearance.Coloring[Def.Key],
-            DefaultAlpha = 1,
+            Alpha = 1,
             Callback = function(Color)
                 Library.Appearance.Coloring[Def.Key] = Color
             end,
