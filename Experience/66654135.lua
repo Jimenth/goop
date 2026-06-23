@@ -1,10 +1,12 @@
+-- // Service and Module \\ --
+
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local LOD = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
+local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 local Module = {
     Function = {},
     
@@ -18,9 +20,6 @@ local Module = {
 local Library = loadfile("Source.lua")()
 local Offsets = loadfile("Offsets.lua")()
 local Tween = loadfile("Tween.lua")()
-local StyleWin = Library:StyleWindow()
-local ConfigWin = Library:ConfigWindow()
-Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 local Roles = {
     Knife = {"Murderer", Color3.fromRGB(255, 0, 0), 1},
@@ -29,12 +28,14 @@ local Roles = {
 
 -- // Interface \\ --
 
-local Window = Library:Window({Name = "Goop | Murder Mystery 2", Size = Vector2.new(550, 700)})
+local Window = Library:Window({Name = "Goop | Murder Mystery 2", Size = Vector2.new(550, 600)})
 
 local MainTab = Window:Page({Name = "Main", Columns = 2})
 local VisualsSection = MainTab:Section({Name = "Visuals", Side = 1})
 local ExploitsSection = MainTab:Section({Name = "Exploits", Side = 2})
 local AutofarmSection = MainTab:Section({Name = "Automation", Side = 2})
+
+-- // Visuals Section \\ --
 
 local RenderRoles = VisualsSection:Toggle({ Name = "Render Roles", Flag = "Render Roles", Default = false, Callback = function(Value) end })
 RenderRoles:KeyPicker({ Name = "Role Key", Flag = "Role Key", Default = "P", Callback = function(Key) end })
@@ -146,7 +147,7 @@ function Module.Function:Render()
                 local Parts, Count = Module.Function:GetCharacterParts(Character)
 
                 if Count > 0 then
-                    local BoundingBox = LOD.GetBoundingBox(Parts)
+                    local BoundingBox = Bounding.GetBoundingBox(Parts)
                     if BoundingBox then
                         local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
                         local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
@@ -265,13 +266,19 @@ task.spawn(function()
     end
 end)
 
+-- // Autofarm Section \\ --
+
 AutofarmSection:Toggle({ Name = "Auto Collect Coins", Flag = "Auto Collect", Default = false, Callback = function(Value) end })
 AutofarmSection:Toggle({ Name = "Full Bag Suicide", Flag = "Full Bag Suicide", Default = false, Callback = function(Value) end })
+
+-- // Exploit Section \\ --
 
 ExploitsSection:Toggle({ Name = "Auto Grab Gun", Flag = "Auto Grab Gun", Default = false, Callback = function(Value) end })
 ExploitsSection:Separator()
 ExploitsSection:Toggle({ Name = "Position Track", Flag = "Position Track", Default = false, Callback = function(Value) end })
 ExploitsSection:Button({ Name = "Teleport To Gun", Callback = function() Module.Function:TeleportToGun() end })
 
-Library:Settings()
+-- // Initalize \\ --
+
+Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.Render:Connect(Module.Function.Render)
