@@ -1,16 +1,4 @@
-local Library = loadfile("Source.lua")()
-local StyleWin = Library:StyleWindow()
-local ConfigWin = Library:ConfigWindow()
-Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
-
--- // Interface \\ --
-
-local Window = Library:Window({Name = "Goop | Notoriety", Size = Vector2.new(550, 622)})
-
-local MainTab = Window:Page({Name = "Main", Columns = 2})
-local EntitiesSection = MainTab:Section({Name = "Entities", Side = 1})
-local WeaponSection = MainTab:Section({Name = "Weapon", Side = 2})
-local PlayerSection = MainTab:Section({Name = "Player", Side = 2})
+-- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -37,10 +25,20 @@ local Module = {
     Paths = {}
 }
 
-EntitiesSection:Toggle({
-    Name = "Render Citizens",
-    Flag = "Render Citizens",
-    Default = false,
+local Library = loadfile("Source.lua")()
+
+-- // Interface \\ --
+
+local Window = Library:Window({Name = "Goop | Notoriety", Size = Vector2.new(550, 622)})
+
+local MainTab = Window:Page({Name = "Main", Columns = 2})
+local EntitiesSection = MainTab:Section({Name = "Entities", Side = 1})
+local WeaponSection = MainTab:Section({Name = "Weapon", Side = 2})
+local PlayerSection = MainTab:Section({Name = "Player", Side = 2})
+
+-- // Entity Section \\ --
+
+EntitiesSection:Toggle({Name = "Render Citizens", Flag = "Render Citizens", Default = false,
     Callback = function(Value)
         if Value then
             if not table.find(Module.Paths, Module.Game.Citizens) then
@@ -62,10 +60,7 @@ EntitiesSection:Toggle({
     end
 })
 
-EntitiesSection:Toggle({
-    Name = "Render Police",
-    Flag = "Render Police",
-    Default = false,
+EntitiesSection:Toggle({Name = "Render Police", Flag = "Render Police", Default = false,
     Callback = function(Value)
         if Value then
             if not table.find(Module.Paths, Module.Game.Police) then
@@ -87,13 +82,13 @@ EntitiesSection:Toggle({
     end
 })
 
---
+-- // Weapon Section \\ --
 
 WeaponSection:Toggle({ Name = "Loop Primary Ammunition", Flag = "Loop Primary", Default = false, Callback = function(Value) end })
 WeaponSection:Toggle({ Name = "Loop Secondary Ammunition", Flag = "Loop Secondary", Default = false, Callback = function(Value) end })
 WeaponSection:Toggle({ Name = "Loop Gadget Ammunition", Flag = "Loop Gadget", Default = false, Callback = function(Value) end })
 
--- 
+-- // Player Section \\ --
 
 PlayerSection:Toggle({ Name = "Loop Stamina", Flag = "Loop Stamina", Default = false, Callback = function(Value) end })
 
@@ -362,6 +357,8 @@ function Module.Function:TeleportBags()
     end
 end
 
+-- // Initalize \\ --
+
 PlayerSection:Button({ Name = "Secure Bags", Callback = function() Module.Function:TeleportBags() end })
-Library:Settings()
+Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.PostLocal:Connect(Module.Function.AmmunitionLoop)
