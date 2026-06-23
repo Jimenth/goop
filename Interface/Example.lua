@@ -28,7 +28,7 @@ MyToggle:ColorPicker({
     Name = "ESP Fill",
     Flag = "ESPFill",
     Default = Color3.fromRGB(255, 255, 255),
-    DefaultAlpha = 0.5,
+    Alpha = 0.5,
     Callback = function(Color) end
 })
  
@@ -43,6 +43,8 @@ MainSection:Slider({
     Flag = "ESPDistance",
     Min = 0,
     Max = 1000,
+    Decimals = 0.1,
+    Suffix = "s",
     Default = 500,
     Callback = function(Value) end
 })
