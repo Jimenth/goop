@@ -1,10 +1,7 @@
-local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
-
-local LocalPlayer = Players.LocalPlayer
-local Camera = workspace.CurrentCamera
-
 local Library = loadfile("Source.lua")()
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
 
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
@@ -30,6 +27,14 @@ ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default 
 
 DronesSection:Toggle({Name = "Enabled", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 
+-- 
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
 local Module = {
     Function = {},
 
@@ -43,7 +48,6 @@ local Module = {
         Drones = {}
     }
 }
-
 
 local Convex = {
     Scratch = {
