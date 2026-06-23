@@ -1,33 +1,4 @@
-local Library = loadfile("Source.lua")()
-local StyleWin = Library:StyleWindow()
-local ConfigWin = Library:ConfigWindow()
-Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
-local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
-
-local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
-Library:Settings()
-
-local VehiclesSection = VisualsTab:Section({Name = "Vehicles", Side = 1})
-local ModulesSection = VisualsTab:Section({Name = "Modules", Side = 2})
-local DronesSection = VisualsTab:Section({Name = "Drones", Side = 2})
-
-VehiclesSection:Toggle({Name = "Enabled", Flag = "Render Vehicles", Default = false, Callback = function(Value) end})
-VehiclesSection:Toggle({Name = "Vehicle Names", Flag = "Vehicle Names", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
-VehiclesSection:Toggle({Name = "Vehicle Distance", Flag = "Vehicle Distance", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Distance", Flag = "Distance Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
-VehiclesSection:Separator()
-VehiclesSection:Toggle({Name = "Use Occupied Color", Flag = "Use Occupied Color", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Occupied", Flag = "Occupied Color", Default = Color3.fromRGB(0, 255, 0), Callback = function(Color) end})
-
--- 
-
-ModulesSection:Toggle({Name = "Enabled", Flag = "Render Modules", Default = false, Callback = function(Value) end})
-ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), DefaultAlpha = 0.5, Callback = function(Color) end})
-ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 0.5, Callback = function(Color) end})
-
--- 
-
-DronesSection:Toggle({Name = "Enabled", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
-
--- 
+-- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
@@ -62,6 +33,36 @@ local Convex = {
         HWMPoly = 0
     }
 }
+
+local Library = loadfile("Source.lua")()
+
+-- // Interface \\ --
+local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
+
+local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
+local VehiclesSection = VisualsTab:Section({Name = "Vehicles", Side = 1})
+local ModulesSection = VisualsTab:Section({Name = "Modules", Side = 2})
+local DronesSection = VisualsTab:Section({Name = "Drones", Side = 2})
+
+-- // Vehicles Section \\ --
+
+VehiclesSection:Toggle({Name = "Enabled", Flag = "Render Vehicles", Default = false, Callback = function(Value) end})
+VehiclesSection:Toggle({Name = "Vehicle Names", Flag = "Vehicle Names", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+VehiclesSection:Toggle({Name = "Vehicle Distance", Flag = "Vehicle Distance", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Distance", Flag = "Distance Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+VehiclesSection:Separator()
+VehiclesSection:Toggle({Name = "Use Occupied Color", Flag = "Use Occupied Color", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Occupied", Flag = "Occupied Color", Default = Color3.fromRGB(0, 255, 0), Callback = function(Color) end})
+
+-- // Modules Section \\ --
+
+ModulesSection:Toggle({Name = "Enabled", Flag = "Render Modules", Default = false, Callback = function(Value) end})
+ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), DefaultAlpha = 0.5, Callback = function(Color) end})
+ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 0.5, Callback = function(Color) end})
+
+-- // Drone Section \\ --
+
+DronesSection:Toggle({Name = "Enabled", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+
+-- // Functions \\ -- 
 
 local function TruncateBuffer(Buffer, NewSize, HighWaterMark)
     for Index = NewSize + 1, HighWaterMark do
@@ -434,4 +435,6 @@ task.spawn(function()
     end
 end)
 
+-- // Initalize \\ --
+Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.Render:Connect(Render)
