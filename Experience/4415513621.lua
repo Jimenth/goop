@@ -1,7 +1,24 @@
+-- // Service and Module \\ --
+
+local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
+local Module = {
+    Function = {},
+
+    Game = {
+        Animals = Workspace:FindFirstChild("Living") and Workspace:FindFirstChild("Living").Animals
+    },
+    
+    Stored = {
+        Entities = {},
+    }
+}
+
 local Library = loadfile("Source.lua")()
-local StyleWin = Library:StyleWindow()
-local ConfigWin = Library:ConfigWindow()
-Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 -- // Interface \\ --
 
@@ -25,25 +42,7 @@ AnimalsSection:Slider({Name = "Maximum Render", Flag = "Maximum Render", Min = 0
 PlayerSection:Toggle({Name = "Loop Ammunition", Flag = "Loop Ammunition", Default = false, Callback = function(Value) end})
 PlayerSection:Separator()
 
---
-
-local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
-
-local LocalPlayer = Players.LocalPlayer
-
-local LOD = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
-local Module = {
-    Function = {},
-
-    Game = {
-        Animals = Workspace:FindFirstChild("Living") and Workspace:FindFirstChild("Living").Animals
-    },
-    
-    Stored = {
-        Entities = {},
-    }
-}
+-- // Functions \\ --
 
 function Module.Function:GetEntityParts(Entity)
     local Parts = {}
@@ -101,7 +100,7 @@ function Module.Function.Render()
             local Parts, Count = Module.Function:GetEntityParts(Animal)
 
             if Count > 0 then
-                local BoundingBox = LOD.GetBoundingBox(Parts)
+                local BoundingBox = Bounding.GetBoundingBox(Parts)
                 if BoundingBox then
                     local ScaledSize = BoundingBox.Size * 2
 
@@ -170,7 +169,8 @@ task.spawn(function()
     end
 end)
 
-Library:Settings()
+-- // Initalize \\ --
+Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
 task.spawn(function() while true do task.wait(0.5) Module.Function:Cache() end end)
