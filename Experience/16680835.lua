@@ -1,3 +1,17 @@
+local Library = loadfile("Source.lua")()
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
+
+-- // Interface \\ --
+
+local Window = Library:Window({Name = "Goop | Notoriety", Size = Vector2.new(550, 622)})
+
+local MainTab = Window:Page({Name = "Main", Columns = 2})
+local EntitiesSection = MainTab:Section({Name = "Entities", Side = 1})
+local WeaponSection = MainTab:Section({Name = "Weapon", Side = 2})
+local PlayerSection = MainTab:Section({Name = "Player", Side = 2})
+
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
@@ -22,17 +36,6 @@ local Module = {
 
     Paths = {}
 }
-
-local Library = loadfile("Source.lua")()
-
--- // Interface \\ --
-
-local Window = Library:Window({Name = "Goop | Notoriety", Size = Vector2.new(550, 622)})
-
-local MainTab = Window:Page({Name = "Main", Columns = 2})
-local EntitiesSection = MainTab:Section({Name = "Entities", Side = 1})
-local WeaponSection = MainTab:Section({Name = "Weapon", Side = 2})
-local PlayerSection = MainTab:Section({Name = "Player", Side = 2})
 
 EntitiesSection:Toggle({
     Name = "Render Citizens",
