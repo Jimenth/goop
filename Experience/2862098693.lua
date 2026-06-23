@@ -1,3 +1,5 @@
+-- // Service and Module \\ --
+
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
@@ -47,29 +49,34 @@ task.wait(4)
 
 local Library = loadfile("Source.lua")()
 local Offsets = loadfile("Offsets.lua")()
+
+-- // Interface \\ --
+
 local Window = Library:Window({Name = "Goop | Project Delta", Size = Vector2.new(550, 600)})
-local StyleWin = Library:StyleWindow()
-local ConfigWin = Library:ConfigWindow()
-Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
 local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
-Library:Settings()
 
 local WeaponSection = ExploitsTab:Section({Name = "Weapon", Side = 1})
 local ExploitsSection = ExploitsTab:Section({Name = "Exploits", Side = 2})
+local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
+local GameSection = VisualsTab:Section({Name = "Game", Side = 12})
+
+-- // Weapon Section \\ --
+
 WeaponSection:Toggle({Name = "Modify Recoil", Flag = "No Recoil", Default = false, Callback = function(Value) end})
 WeaponSection:Slider({Name = "Recoil Percentage", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 WeaponSection:Separator()
 WeaponSection:Toggle({Name = "Modify Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
 WeaponSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 
+-- // Exploits Section \\ --
+
 ExploitsSection:Toggle({Name = "Item Reach", Flag = "Item Reach", Default = false, Callback = function(Value) end})
 ExploitsSection:Slider({Name = "Reach Extension", Flag = "Reach Extension", Min = 2, Max = 14, Default = 5, Callback = function(Value) end})
---
 
-local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
-local GameSection = VisualsTab:Section({Name = "Game", Side = 12})
+-- // World Section \\ --
+
 WorldSection:Toggle({Name = "Render Drops", Flag = "Render Drops", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drop", Flag = "Drop Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Dropdown({Name = "Item Filter", Flag = "Drop Filter", Multi = true, Options = {"Weapons", "Attachments", "Magazines", "Ammo", "Medical", "Armor", "Clothing", "Visors", "Optics", "Melee", "Grenades", "Deployables", "Food", "Keys", "Tools", "Materials", "Electronics", "Valuables", "Maps", "Special"}, Default = {1, 3}, Callback = function(Value) end})
@@ -82,6 +89,8 @@ WorldSection:Slider({Name = "Maximum Render", Flag = "Vehicles Render", Min = 0,
 WorldSection:Separator()
 WorldSection:Toggle({Name = "Render Exits", Flag = "Render Exits", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Exit", Flag = "Exit Color", Default = Color3.fromRGB(255, 255, 255), DefaultAlpha = 1, Callback = function(Color) end})
 WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+
+-- // Game Section \\ --
 
 GameSection:Toggle({Name = "Zoom", Flag = "Zoom", Default = false, Callback = function(Value) end}):KeyPicker({ Flag = "Zoom Key", Default = "Z", Callback = function() if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = not Module.Stored.Zoom end})
 GameSection:Slider({Name = "Zoom Amount", Flag = "Zoom Amount", Min = 0, Max = 90, Default = 25, Callback = function(Value) end})
@@ -1193,6 +1202,8 @@ task.spawn(function()
 	end
 end)
 
+-- // Target Indicators (Shit) \\ --
+
 function Module.Function:DrawIndicator(Position, Character, Transparency)
     local X = Position.X
     local Y = Position.Y
@@ -1367,6 +1378,8 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
     end
 end
 
+-- // Initalize \\ --
+Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Module.Function:CacheBallistics()
 local Restored = false
 
