@@ -20,6 +20,7 @@ local Module = {
             Recoil = {},
             Spread = {},
             FieldOfView = nil,
+            Sizes = {}
         },
 
         Cache = {
@@ -41,20 +42,30 @@ local Module = {
     }
 }
 
+memory.set_write_strength(1e-6)
+task.wait(4)
+
 local Library = loadfile("Source.lua")()
 local Offsets = loadfile("Offsets.lua")()
 local Window = Library:Window({Name = "Goop | Project Delta", Size = Vector2.new(550, 600)})
+local StyleWin = Library:StyleWindow()
+local ConfigWin = Library:ConfigWindow()
+Library:NavBar(Library.Windows[1], StyleWin, ConfigWin)
 
-local AimingTab = Window:Page({Name = "Aiming & Ballistics", Columns = 2})
+local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 Library:Settings()
 
-local BallisticSection = AimingTab:Section({Name = "Ballistics", Side = 2})
-BallisticSection:Toggle({Name = "Modify Recoil", Flag = "No Recoil", Default = false, Callback = function(Value) end})
-BallisticSection:Slider({Name = "Recoil Percentage", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
-BallisticSection:Toggle({Name = "Modify Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
-BallisticSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+local WeaponSection = ExploitsTab:Section({Name = "Weapon", Side = 1})
+local ExploitsSection = ExploitsTab:Section({Name = "Exploits", Side = 2})
+WeaponSection:Toggle({Name = "Modify Recoil", Flag = "No Recoil", Default = false, Callback = function(Value) end})
+WeaponSection:Slider({Name = "Recoil Percentage", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+WeaponSection:Separator()
+WeaponSection:Toggle({Name = "Modify Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
+WeaponSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 
+ExploitsSection:Toggle({Name = "Item Reach", Flag = "Item Reach", Default = false, Callback = function(Value) end})
+ExploitsSection:Slider({Name = "Reach Extension", Flag = "Reach Extension", Min = 2, Max = 14, Default = 5, Callback = function(Value) end})
 --
 
 local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
@@ -1020,6 +1031,33 @@ task.spawn(function()
 	while true do
 		task.wait(0.5)
 
+        if Library.Flags["Item Reach"] then
+            for _, Item in ipairs(Module.Game.Dropped:GetChildren()) do
+                if not Item or not Item:IsA("Model") then
+                    continue
+                end
+
+                local Part = Item:FindFirstChild("Part")
+                if not Part then
+                    continue
+                end
+
+                if Library.Flags["Item Reach"] and vector.magnitude(Module.Stored.Client.Position - Part.Position) <= 15 then
+                    if not Module.Stored.Original.Sizes[Part] then
+                        Module.Stored.Original.Sizes[Part] = Part.Size
+                    end
+
+                    local Size = Library.Flags["Reach Extension"].Value
+
+                    memory.writef32(Part, Offsets.BasePart.Transparency, 1)
+                    Part.Size = Vector3.new(Size, Size, Size)
+                    Part.CanCollide = false
+                else
+                    Part.Size = Module.Stored.Original.Sizes[Part]
+                end
+            end
+        end
+
         local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
         local NoInsetGui = PlayerGui:FindFirstChild("NoInsetGui")
         local MainFrame = NoInsetGui:FindFirstChild("MainFrame")
@@ -1154,10 +1192,6 @@ task.spawn(function()
 		end
 	end
 end)
-
-function Module.Function:SetFOV(Value)
-    Camera.FieldOfView = Value
-end
 
 function Module.Function:DrawIndicator(Position, Character, Transparency)
     local X = Position.X
@@ -1334,13 +1368,17 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
 end
 
 Module.Function:CacheBallistics()
+local Restored = false
+
 RunService.Render:Connect(function()
     Module.Function:Render()
 
     if Module.Stored.Zoom then
+        Restored = false
         memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Library.Flags["Zoom Amount"].Value))
-    else
+    elseif not Restored then
         memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Module.Stored.Original.FieldOfView))
+        Restored = true
     end
     
     local Entity = Module.Function:GetClosestEntity()
