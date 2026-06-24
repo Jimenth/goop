@@ -52,7 +52,7 @@ local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimen
 
 -- // Interface \\ --
 
-local Window = Library:Window({Name = "Goop | Project Delta", Size = Vector2.new(550, 600)})
+local Window = Library:Window({Name = "Goop | Project Delta", Size = Vector2.new(700, 750)})
 
 local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
@@ -1068,9 +1068,24 @@ task.spawn(function()
         end
 
         local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
+        if not PlayerGui then
+            continue
+        end
+
         local NoInsetGui = PlayerGui:FindFirstChild("NoInsetGui")
+        if not NoInsetGui then
+            continue
+        end
+
         local MainFrame = NoInsetGui:FindFirstChild("MainFrame")
+        if not MainFrame then
+            continue
+        end
+
         local ScreenEffects = MainFrame:FindFirstChild("ScreenEffects")
+        if not ScreenEffects then
+            continue
+        end
 
         if Library.Flags["Remove Screen Effects"] then
             memory.writeu8(ScreenEffects, Offsets.GuiObject.Visible, 0)
@@ -1284,7 +1299,7 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
 
     DrawBox(BarX, BarY, BarW, BarH, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
     if FillW > 0 then
-        DrawRect(BarX + 2, BarY + 2, FillW, BarH - 4, Library.Theme["Dark Accent"], Transparency)
+        DrawRect(BarX + 2, BarY + 2, FillW, BarH - 4, Library.Theme["Accent"], Transparency)
         DrawRect(BarX + 2, BarY + 2, math.max(FillW - 2, 0), BarH - 4, Library.Theme.Accent, Transparency)
     end
 
@@ -1368,6 +1383,15 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
 end
 
 -- // Initalize \\ --
+--[[
+WeaponSection:Separator()
+WeaponSection:Label({Name = "Unrestorable Values, Click Again if Broken"})
+WeaponSection:Button({Name = "Modify Firerate, No Bolt's", Callback = function() gc.setgc("FireRate", Library.Flags["Fire Rate"]) send_notification("Set Firerate", "warning") end})
+WeaponSection:Slider({Flag = "Fire Rate", Decimals = 0.01, Min = 0.01, Max = 1, Default = 0.06, Callback = function(Value) end })
+WeaponSection:Button({Name = "Instant Aim", Callback = function() gc.setgc("AimInSpeed", 0) gc.setgc("AimOutSpeed", 0) send_notification("Set Aim Speed", "warning") end})
+]]
+
+Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Module.Function:CacheBallistics()
 local Restored = false
