@@ -359,6 +359,7 @@ end
 
 -- // Initalize \\ --
 
+Library:Watermark("Goop")
 PlayerSection:Button({ Name = "Secure Bags", Callback = function() Module.Function:TeleportBags() end })
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.PostLocal:Connect(Module.Function.AmmunitionLoop)
