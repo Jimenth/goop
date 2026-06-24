@@ -29,7 +29,6 @@ local Library do
 
         Theme = {
             ["Accent"] = FromRGB(177, 156, 217),
-            ["Dark Accent"] = FromRGB(139, 107, 163),
             ["Background"] = FromRGB(28, 28, 28),
             ["Dark Background"] = FromRGB(20, 20, 20),
             ["Border"] = FromRGB(50, 50, 50),
@@ -38,7 +37,7 @@ local Library do
             ["White"] = FromRGB(255, 255, 255),
         },
 
-        Font = "Proggy",
+        Font = "Pixel", -- Jersey, Interum, Pixel, Proggy
         FontSize = 13,
 
         Layout = {
@@ -285,7 +284,7 @@ local Library do
             DrawSwatch(X, BadgeY, FromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3]), Picker.Alpha * 255)
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BadgeY, SW, 13) then
                 Library.Input.Consumed = true
-                Library:ToggleColorPickerWindow(Picker, X - 260, BadgeY + 17)
+                Library:ToggleColorPickerWindow(Picker, X - 200, BadgeY + 17)
             end
         end
 
@@ -297,7 +296,7 @@ local Library do
 
             DrawBox(X, BadgeY, SW, 13,
                 Theme["Black"],
-                Keypicker.Capturing and Theme["Dark Accent"] or Theme["Border"],
+                Keypicker.Capturing and Theme["Accent"] or Theme["Border"],
                 Keypicker.Capturing and Theme["Accent"] or (Hovered and Theme["Dark Background"] or Theme["Background"]))
 
             local Bounds = GetTextBounds(Label, 11)
@@ -366,7 +365,7 @@ local Library do
 
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(SwX, Y + 1, SW, 13) then
                 Library.Input.Consumed = true
-                Library:ToggleColorPickerWindow(self, SwX - 260, Y + 18)
+                Library:ToggleColorPickerWindow(self, SwX - 200, Y + 18)
             end
         end
 
@@ -516,7 +515,7 @@ local Library do
 
             DrawBox(X, Y, 15, 15,
                 Theme["Black"],
-                self.Value and Theme["Dark Accent"] or Theme["Border"],
+                self.Value and Theme["Accent"] or Theme["Border"],
                 self.Value and Theme["Accent"] or Theme["Background"])
             DrawText(X + 18, Y + 1, Library.FontSize, Theme["White"], self.Name)
 
@@ -582,7 +581,7 @@ local Library do
             local Fraction = (self.Value - self.Min) / (self.Max - self.Min)
             local FillWidth = MathFloor((Width - 2) * Fraction)
             if FillWidth > 0 then
-                DrawRect(X + 1, BarY + 1, FillWidth, 13, Theme["Dark Accent"])
+                DrawRect(X + 1, BarY + 1, FillWidth, 13, Theme["Accent"])
                 DrawRect(X + 2, BarY + 2, MathMax(FillWidth - 2, 0), 11, Theme["Accent"])
             end
 
@@ -687,9 +686,11 @@ local Library do
             DrawText(X, Y, Library.FontSize, Theme["White"], self.Name)
 
             local BarY = Y + 15
-            DrawBox(X, BarY, Width, 22, Theme["Black"], Theme["Border"], Theme["Background"])
-            DrawText(X + 4, BarY + 4, Library.FontSize, Theme["White"], DisplayText)
-            DrawText(X + Width - 15, BarY + 4, Library.FontSize, Theme["White"], self.Open and "-" or "+")
+            DrawRect(X, BarY, Width, 22, Theme["Black"])
+            DrawRect(X + 1, BarY + 1, Width - 2, 20, self.Open and Theme["Accent"] or Theme["Border"])
+            DrawRect(X + 2, BarY + 2, Width - 4, 18, Theme["Background"])
+            DrawText(X + 5, BarY + 4, Library.FontSize, Theme["White"], DisplayText)
+            DrawText(X + Width - 14, BarY + 4, Library.FontSize, Theme["Accent"], self.Open and "-" or "+")
 
             if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(X, BarY, Width, 22) then
                 Library.Input.Consumed = true
@@ -831,7 +832,7 @@ local Library do
 
             DrawBox(X, Y, Width, 22,
                 Theme["Black"],
-                IsFocused and Theme["Dark Accent"] or Theme["Border"],
+                IsFocused and Theme["Accent"] or Theme["Border"],
                 Theme["Background"])
 
             local DisplayText = self.Value ~= "" and self.Value or self.Placeholder
@@ -1081,7 +1082,7 @@ local Library do
 
                 local Hovered = self.ScrollDragging or Library:IsHovering(TrackX - 2, ThumbY, 8, ThumbHeight)
                 DrawRect(TrackX, TrackY, 3, ViewHeight, Theme["Black"])
-                DrawRect(TrackX, ThumbY, 3, ThumbHeight, Hovered and Theme["Accent"] or Theme["Dark Accent"])
+                DrawRect(TrackX, ThumbY, 3, ThumbHeight, Hovered and Theme["Accent"] or Theme["Accent"])
             end
         end
 
@@ -1108,7 +1109,9 @@ local Library do
             X = 0, Y = 0, Width = 0, Height = 0,
         }
 
-        for Index, Name in Names do
+        -- A MultiSection supports at most 3 sub-sections.
+        for Index = 1, MathMin(#Names, 3) do
+            local Name = Names[Index]
             local Sub = setmetatable({
                 Page = self,
                 Window = self.Window,
@@ -1130,7 +1133,7 @@ local Library do
             self.X, self.Y, self.Width = X, Y, Width
 
             local Padding = Library.Layout.SectionInnerPadding
-            local TabRowHeight = 24
+            local TabRowHeight = 28
             local StripHeight = TabRowHeight - 4
 
             local ActiveSection = self.Tabs[self.Active]
@@ -1164,8 +1167,9 @@ local Library do
                     DrawRect(TabX, StripBottom - 1, TabWidth, 1, Theme["Border"])
                 end
 
-                -- Divider between adjacent tabs.
-                if Index > 1 then
+                -- Divider between adjacent tabs, but only when one of the pair is
+                -- the active tab — two side-by-side inactive tabs read as one strip.
+                if Index > 1 and (Active or self.Active == Index - 1) then
                     DrawRect(TabX, Y + 2, 1, StripHeight, Theme["Border"])
                 end
 
@@ -1302,8 +1306,10 @@ local Library do
 
         local X, Y, W = KW.X, KW.Y, KW.Width
 
-        DrawBox(X, Y, W, TotalH, Theme["Black"], Theme["Accent"], Theme["Background"])
-        DrawText(X + 9, Y + 8, Library.FontSize, Theme["White"], "Keybinds")
+        DrawBox(X, Y, W, TotalH, Theme["Black"], Theme["Border"], Theme["Background"])
+        DrawRect(X + 2, Y + 2, W - 4, 2, Theme["Accent"])
+        local HeaderBounds = GetTextBounds("Keybinds")
+        DrawText(X + MathFloor((W - HeaderBounds.X) / 2), Y + 8, Library.FontSize, Theme["White"], "Keybinds")
 
         local CX = X + 4
         local CY = Y + HeaderH
@@ -1494,43 +1500,95 @@ local Library do
         if Library.DropdownOverlay then
             local Overlay = Library.DropdownOverlay
             local Element = Overlay.Element
-            local TotalHeight = #Element.Options * 20
+            local OX, OY, OW = Overlay.X, Overlay.Y, Overlay.Width
+
+            -- Cap the list at 8 rows; anything beyond that scrolls (whole rows).
+            local RowH = 20
+            local OptionCount = #Element.Options
+            local VisibleRows = MathMin(OptionCount, 8)
+            local ViewHeight = VisibleRows * RowH
+            local OverflowRows = OptionCount - VisibleRows
+            local Scrollable = OverflowRows > 0
+
+            Element.DropScrollRow = MathClamp(Element.DropScrollRow or 0, 0, OverflowRows)
+
             Library.LastDropdownRect = {
-                Overlay.X, Overlay.Y, Overlay.Width, TotalHeight,
-                Overlay.X, Overlay.Y - 22, Overlay.Width, 22 + TotalHeight,
+                OX, OY, OW, ViewHeight,
+                OX, OY - 22, OW, 22 + ViewHeight,
             }
 
-            for Index, Option in Element.Options do
-                local OptionY = Overlay.Y + (Index - 1) * 20
-                local Hovered = Library:IsHovering(Overlay.X, OptionY, Overlay.Width, 20)
-                local Selected = Element.Multi
-                    and (Element.SelectedIndices[Index] == true)
-                    or (not Element.Multi and Index == Element.SelectedIndex)
+            -- Bordered panel: outline -> border -> background.
+            DrawRect(OX, OY, OW, ViewHeight, Theme["Black"])
+            DrawRect(OX + 1, OY + 1, OW - 2, ViewHeight - 2, Theme["Border"])
+            DrawRect(OX + 2, OY + 2, OW - 4, ViewHeight - 4, Theme["Background"])
 
-                DrawRect(Overlay.X, OptionY, Overlay.Width, 20, Theme["Black"])
-                DrawRect(Overlay.X + 1, OptionY + 1, Overlay.Width - 2, 18,
-                    Hovered and Theme["Border"] or (Selected and Theme["Dark Background"] or Theme["Background"]))
-                DrawText(Overlay.X + 4, OptionY + 3, Library.FontSize, Selected and Theme["Accent"] or Theme["White"], Option)
+            local RowW = OW - (Scrollable and 7 or 0)
 
-                if Library.Input.MouseClicked and Hovered then
-                    Library.Input.Consumed = true
-                    if Element.Multi then
-                        Element.SelectedIndices[Index] = not Element.SelectedIndices[Index] or nil
-                        Element:SyncFlag()
-                        local Valid = { }
-                        for I, Sel in Element.SelectedIndices do
-                            if Sel then Valid[#Valid + 1] = Element.Options[I] end
+            for Slot = 0, VisibleRows - 1 do
+                local Index = Element.DropScrollRow + Slot + 1
+                local Option = Element.Options[Index]
+                if Option then
+                    local OptionY = OY + Slot * RowH
+                    local Hovered = Library:IsHovering(OX, OptionY, RowW, RowH)
+                    local Selected = Element.Multi
+                        and (Element.SelectedIndices[Index] == true)
+                        or (not Element.Multi and Index == Element.SelectedIndex)
+
+                    if Hovered then
+                        DrawRect(OX + 2, OptionY + 1, RowW - 4, RowH - 2, Theme["Border"])
+                    end
+                    if Selected or Hovered then
+                        DrawRect(OX + 2, OptionY + 2, 2, RowH - 4, Theme["Accent"])
+                    end
+                    DrawText(OX + 7, OptionY + 3, Library.FontSize, Selected and Theme["Accent"] or Theme["White"], Option)
+
+                    if Library.Input.MouseClicked and Hovered then
+                        Library.Input.Consumed = true
+                        if Element.Multi then
+                            Element.SelectedIndices[Index] = not Element.SelectedIndices[Index] or nil
+                            Element:SyncFlag()
+                            local Valid = { }
+                            for I, Sel in Element.SelectedIndices do
+                                if Sel then Valid[#Valid + 1] = Element.Options[I] end
+                            end
+                            TableSort(Valid)
+                            Element.Callback(Valid)
+                        else
+                            Element.SelectedIndex = Index
+                            Element.Open = false
+                            Library.ActiveDropdown = nil
+                            Element:SyncFlag()
+                            Element.Callback(Element.Options[Index])
                         end
-                        TableSort(Valid)
-                        Element.Callback(Valid)
-                    else
-                        Element.SelectedIndex = Index
-                        Element.Open = false
-                        Library.ActiveDropdown = nil
-                        Element:SyncFlag()
-                        Element.Callback(Element.Options[Index])
                     end
                 end
+            end
+
+            -- Scrollbar (same draggable thumb as ScrollableSection, stepped by row).
+            if Scrollable then
+                local TrackX = OX + OW - 5
+                local TrackY = OY + 2
+                local TrackH = ViewHeight - 4
+                local ThumbH = MathMax(16, MathFloor(TrackH * VisibleRows / OptionCount))
+                local ThumbY = TrackY + MathFloor((TrackH - ThumbH) * (Element.DropScrollRow / OverflowRows))
+
+                -- No `not Consumed` guard: the dropdown's outside-click check at the top
+                -- of Window:Render already consumes clicks inside the panel, so the thumb
+                -- claims the grab on MouseClicked + hover (the option rows do the same).
+                if Library.Input.MouseClicked and Library:IsHovering(TrackX - 2, TrackY, 8, TrackH) then
+                    Element.DropScrollDragging = true
+                    Library.Input.Consumed = true
+                end
+                if not Library.Input.MouseDown then Element.DropScrollDragging = false end
+                if Element.DropScrollDragging then
+                    local Fraction = MathClamp((Library.Input.MouseY - TrackY - ThumbH / 2) / MathMax(1, TrackH - ThumbH), 0, 1)
+                    Element.DropScrollRow = MathFloor(Fraction * OverflowRows + 0.5)
+                    ThumbY = TrackY + MathFloor((TrackH - ThumbH) * (Element.DropScrollRow / OverflowRows))
+                end
+
+                local ThumbHovered = Element.DropScrollDragging or Library:IsHovering(TrackX - 2, ThumbY, 8, ThumbH)
+                DrawRect(TrackX, TrackY, 3, TrackH, Theme["Black"])
+                DrawRect(TrackX, ThumbY, 3, ThumbH, ThumbHovered and Theme["Accent"] or Theme["Border"])
             end
         end
 
@@ -1556,7 +1614,7 @@ local Library do
 
                 DrawBox(MX + 8, OptionY + 4, 11, 11,
                     Theme["Black"],
-                    Active and Theme["Dark Accent"] or Theme["Border"],
+                    Active and Theme["Accent"] or Theme["Border"],
                     Active and Theme["Accent"] or Theme["Dark Background"])
 
                 DrawText(MX + 23, OptionY + 3, Library.FontSize, Active and Theme["White"] or Theme["Dim"], Mode)
@@ -1617,7 +1675,6 @@ local Library do
 
         Library.Windows[#Library.Windows + 1] = Window
 
-        -- Per-frame key polling: capture-in-progress, bound keybinds and keypickers.
         RunService.PostLocal:Connect(function()
             local PressedKeys = getpressedkeys() or { }
             local function IsKeyPressed(Target) return TableFind(PressedKeys, Target) ~= nil end
@@ -1673,7 +1730,6 @@ local Library do
                                     TE.Callback(TE.Value)
                                 end
                             else
-                                -- Standalone (Label/Section) picker keeps its own on/off state.
                                 Keypicker.ToggledState = not (Keypicker.ToggledState or false)
                                 if Keypicker.HasCallback then
                                     Keypicker.Callback(Keypicker.ToggledState)
@@ -1717,18 +1773,20 @@ local Library do
         ColorPicker.WindowY = SpawnY
 
         -- Layout constants mirrored exactly by RenderColorPicker.
-        local TitleH = 24
-        local WinPad = 8
-        local ContPad = 6
-        local SVSize = 200
-        local HueBarGap = 6
-        local HueBarW = 18
-        local AlphaBarH = 18
-        local AlphaBarGap = 8
+        local TitleH = 18
+        local WinPad = 6
+        local ContPad = 5
+        local SVSize = 150
+        local HueBarGap = 5
+        local HueBarW = 14
+        local AlphaBarH = 14
+        local AlphaBarGap = 6
+        local ButtonH = 16
+        local ButtonGap = 6
 
         local TotalContentW = SVSize + HueBarGap + HueBarW
         local ContW = ContPad + TotalContentW + ContPad
-        local ContH = ContPad + SVSize + AlphaBarGap + AlphaBarH + ContPad
+        local ContH = ContPad + SVSize + AlphaBarGap + AlphaBarH + ButtonGap + ButtonH + ContPad
 
         ColorPicker.WindowWidth = WinPad + ContW + WinPad
         ColorPicker.WindowHeight = TitleH + WinPad + ContH + WinPad
@@ -1772,21 +1830,23 @@ local Library do
         DrawRect(CloseX, WY + 4, 16, 16, Theme["Background"])
         DrawText(CloseX + 4, WY + 5, Library.FontSize, CloseHovered and Theme["Accent"] or Theme["White"], "X")
 
-        local TitleH = 24
-        local WinPad = 8
-        local ContPad = 6
-        local SVSize = 200
-        local HueBarGap = 6
-        local HueBarW = 18
-        local AlphaBarH = 18
-        local AlphaBarGap = 8
+        local TitleH = 18
+        local WinPad = 6
+        local ContPad = 5
+        local SVSize = 150
+        local HueBarGap = 5
+        local HueBarW = 14
+        local AlphaBarH = 14
+        local AlphaBarGap = 6
+        local ButtonH = 16
+        local ButtonGap = 6
         local SwatchSize = AlphaBarH
-        local SwatchGap = 6
+        local SwatchGap = 5
         local TotalContentW = SVSize + HueBarGap + HueBarW
         local AlphaW = TotalContentW - SwatchGap - SwatchSize
         local ContW = ContPad + TotalContentW + ContPad
-        local ContH = ContPad + SVSize + AlphaBarGap + AlphaBarH + ContPad
-        local PixelStep = 10
+        local ContH = ContPad + SVSize + AlphaBarGap + AlphaBarH + ButtonGap + ButtonH + ContPad
+        local SVSteps = 24
 
         local ContX = WX + WinPad
         local ContY = WY + TitleH + WinPad
@@ -1795,15 +1855,34 @@ local Library do
         local CX = ContX + ContPad
         local CY = ContY + ContPad
 
-        -- Saturation / Value square.
+        -- Saturation / Value square. Cell colours are cached per hue: HSVToRGB only
+        -- re-runs when the hue changes, so dragging Saturation/Value (or idling)
+        -- just redraws the cached grid instead of recomputing every cell each frame.
         local SVX, SVY = CX, CY
+        local CellW = SVSize / SVSteps
+        local CellH = SVSize / SVSteps
+
+        if Picker.SVCacheHue ~= Picker.Hue then
+            Picker.SVCacheHue = Picker.Hue
+            local Cache = Picker.SVCache or { }
+            Picker.SVCache = Cache
+            for ColumnIndex = 0, SVSteps - 1 do
+                local Column = Cache[ColumnIndex + 1] or { }
+                Cache[ColumnIndex + 1] = Column
+                local S = ColumnIndex / (SVSteps - 1)
+                for RowIndex = 0, SVSteps - 1 do
+                    local R, G, B = self:HSVToRGB(Picker.Hue, S, 1 - RowIndex / (SVSteps - 1))
+                    Column[RowIndex + 1] = FromRGB(R, G, B)
+                end
+            end
+        end
+
         DrawRect(SVX - 1, SVY - 1, SVSize + 2, SVSize + 2, Theme["Black"])
-        for PX = 0, SVSize - 1, PixelStep do
-            for PY = 0, SVSize - 1, PixelStep do
-                local S = PX / SVSize
-                local V = 1 - (PY / SVSize)
-                local R, G, B = self:HSVToRGB(Picker.Hue, S, V)
-                DrawRect(SVX + PX, SVY + PY, PixelStep, PixelStep, FromRGB(R, G, B))
+        for ColumnIndex = 0, SVSteps - 1 do
+            local Column = Picker.SVCache[ColumnIndex + 1]
+            local CellX = SVX + ColumnIndex * CellW
+            for RowIndex = 0, SVSteps - 1 do
+                DrawRect(CellX, SVY + RowIndex * CellH, CellW + 1, CellH + 1, Column[RowIndex + 1])
             end
         end
 
@@ -1825,14 +1904,24 @@ local Library do
         end
         if not self.Input.MouseDown then Picker.DraggingSV = false end
 
-        -- Hue bar.
+        -- Hue bar. The gradient is fixed (hue 0..1 at full S/V), so it's built once
+        -- for the session and just redrawn each frame instead of recomputed.
         local HueX = SVX + SVSize + HueBarGap
         local HueY = SVY
         local HueStep = 2
+
+        if not Library.HueBarCache then
+            local Cache = { }
+            for Step = 0, SVSize - 1, HueStep do
+                local R, G, B = self:HSVToRGB(Step / SVSize, 1, 1)
+                Cache[#Cache + 1] = FromRGB(R, G, B)
+            end
+            Library.HueBarCache = Cache
+        end
+
         DrawRect(HueX - 1, HueY - 1, HueBarW + 2, SVSize + 2, Theme["Black"])
-        for Step = 0, SVSize - 1, HueStep do
-            local R, G, B = self:HSVToRGB(Step / SVSize, 1, 1)
-            DrawRect(HueX, HueY + Step, HueBarW, HueStep, FromRGB(R, G, B))
+        for Index, Color in Library.HueBarCache do
+            DrawRect(HueX, HueY + (Index - 1) * HueStep, HueBarW, HueStep, Color)
         end
 
         local HueCursorY = HueY + MathFloor(Picker.Hue * (SVSize - 1))
@@ -1903,6 +1992,38 @@ local Library do
         DrawRect(SwatchPreviewX - 1, SwatchPreviewY + SwatchSize, SwatchSize + 2, 1, Theme["Black"])
         DrawRect(SwatchPreviewX - 1, SwatchPreviewY - 1, 1, SwatchSize + 2, Theme["Black"])
         DrawRect(SwatchPreviewX + SwatchSize, SwatchPreviewY - 1, 1, SwatchSize + 2, Theme["Black"])
+
+        -- Copy / Paste row. Copy stores this picker's colour in a shared slot;
+        -- Paste applies that slot to whichever picker is open (no system clipboard).
+        local ButtonY = AlphaY + AlphaBarH + ButtonGap
+        local HalfGap = 4
+        local HalfW = MathFloor((TotalContentW - HalfGap) / 2)
+        local PasteX = CX + HalfW + HalfGap
+
+        local CopyHovered = self:IsHovering(CX, ButtonY, HalfW, ButtonH)
+        DrawBox(CX, ButtonY, HalfW, ButtonH, Theme["Black"], Theme["Border"], CopyHovered and Theme["Dark Background"] or Theme["Background"])
+        local CopyBounds = GetTextBounds("Copy")
+        DrawText(CX + MathFloor((HalfW - CopyBounds.X) / 2), ButtonY + MathFloor((ButtonH - CopyBounds.Y) / 2),
+            Library.FontSize, CopyHovered and Theme["Accent"] or Theme["White"], "Copy")
+        if self.Input.MouseClicked and CopyHovered then
+            self.Input.Consumed = true
+            self.CopiedColor = { Picker.Color[1], Picker.Color[2], Picker.Color[3], Picker.Alpha }
+        end
+
+        local PasteHovered = self:IsHovering(PasteX, ButtonY, HalfW, ButtonH)
+        DrawBox(PasteX, ButtonY, HalfW, ButtonH, Theme["Black"], Theme["Border"], PasteHovered and Theme["Dark Background"] or Theme["Background"])
+        local PasteBounds = GetTextBounds("Paste")
+        DrawText(PasteX + MathFloor((HalfW - PasteBounds.X) / 2), ButtonY + MathFloor((ButtonH - PasteBounds.Y) / 2),
+            Library.FontSize, PasteHovered and Theme["Accent"] or Theme["White"], "Paste")
+        if self.Input.MouseClicked and PasteHovered and self.CopiedColor then
+            self.Input.Consumed = true
+            Picker.Color[1], Picker.Color[2], Picker.Color[3] = self.CopiedColor[1], self.CopiedColor[2], self.CopiedColor[3]
+            Picker.Alpha = self.CopiedColor[4] or Picker.Alpha
+            local PH, PS, PV = self:RGBToHSV(Picker.Color[1], Picker.Color[2], Picker.Color[3])
+            Picker.Hue, Picker.Saturation, Picker.Value = PH, PS, PV
+            Picker:SyncFlag()
+            Picker.Callback(FromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3]))
+        end
     end
 
     -- // Config (Flags) \\ --
@@ -2032,7 +2153,7 @@ local Library do
         local StylePage = StyleWindow:Page({ Name = "Style", Columns = 1 })
         local StyleSection = StylePage:Section({ Name = "Theme", Side = 1 })
 
-        local ThemeKeys = { "Accent", "Dark Accent", "Background", "Dark Background", "Border" }
+        local ThemeKeys = { "Accent", "Background", "Dark Background", "Border" }
         local ThemePickers = { }
         for _, Key in ThemeKeys do
             ThemePickers[Key] = StyleSection:ColorPicker({
@@ -2049,10 +2170,108 @@ local Library do
         StyleSection:Separator()
 
         local Presets = {
-            { Name = "Purple", Colors = { ["Accent"] = FromRGB(177, 156, 217), ["Dark Accent"] = FromRGB(139, 107, 163) } },
-            { Name = "Blue", Colors = { ["Accent"] = FromRGB(100, 160, 255), ["Dark Accent"] = FromRGB(60, 120, 200) } },
-            { Name = "Red", Colors = { ["Accent"] = FromRGB(255, 100, 100), ["Dark Accent"] = FromRGB(200, 60, 60) } },
-            { Name = "Green", Colors = { ["Accent"] = FromRGB(100, 255, 130), ["Dark Accent"] = FromRGB(60, 200, 80) } },
+            { Name = "Default", Colors = {
+                ["Accent"] = FromRGB(177, 156, 217),
+                ["Background"] = FromRGB(28, 28, 28),
+                ["Dark Background"] = FromRGB(20, 20, 20),
+                ["Border"] = FromRGB(50, 50, 50),
+            } },
+            { Name = "Gamesense", Colors = {
+                ["Accent"] = FromRGB(181, 249, 21),
+                ["Background"] = FromRGB(28, 28, 28),
+                ["Dark Background"] = FromRGB(24, 24, 24),
+                ["Border"] = FromRGB(37, 37, 37),
+            } },
+            { Name = "Severe", Colors = {
+                ["Accent"] = FromRGB(1, 128, 254),
+                ["Background"] = FromRGB(21, 20, 27),
+                ["Dark Background"] = FromRGB(16,16,20),
+                ["Border"] = FromRGB(33, 32, 45),
+            } },
+            { Name = "Midnight", Colors = {
+                ["Accent"] = FromRGB(110, 167, 212),
+                ["Background"] = FromRGB(48, 47, 54),
+                ["Dark Background"] = FromRGB(45, 43, 50),
+                ["Border"] = FromRGB(64, 63, 69),
+            } },
+            { Name = "Parchment", Colors = {
+                ["Accent"] = FromRGB(219, 202, 189),
+                ["Background"] = FromRGB(30, 31, 30),
+                ["Dark Background"] = FromRGB(30, 31, 30),
+                ["Border"] = FromRGB(36, 36, 36),
+            } },
+            { Name = "Emerald", Colors = {
+                ["Accent"] = FromRGB(0, 230, 118),
+                ["Background"] = FromRGB(25, 27, 25),
+                ["Dark Background"] = FromRGB(18, 20, 18),
+                ["Border"] = FromRGB(40, 38, 40),
+            } },
+            { Name = "Jasmine", Colors = {
+                ["Accent"] = FromRGB(245, 226, 158),
+                ["Background"] = FromRGB(30, 29, 25),
+                ["Dark Background"] = FromRGB(23, 22, 18),
+                ["Border"] = FromRGB(86, 78, 44),
+            } },
+            { Name = "Godly", Colors = {
+                ["Accent"] = FromRGB(255, 208, 92),
+                ["Background"] = FromRGB(30, 28, 23),
+                ["Dark Background"] = FromRGB(23, 21, 17),
+                ["Border"] = FromRGB(96, 74, 28),
+            } },
+            { Name = "Obsidian", Colors = {
+                ["Accent"] = FromRGB(138, 116, 184),
+                ["Background"] = FromRGB(20, 19, 24),
+                ["Dark Background"] = FromRGB(14, 14, 18),
+                ["Border"] = FromRGB(60, 50, 88),
+            } },
+            { Name = "Iron", Colors = {
+                ["Accent"] = FromRGB(174, 180, 192),
+                ["Background"] = FromRGB(27, 28, 30),
+                ["Dark Background"] = FromRGB(21, 22, 24),
+                ["Border"] = FromRGB(64, 72, 84),
+            } },
+            { Name = "Flame", Colors = {
+                ["Accent"] = FromRGB(255, 106, 38),
+                ["Background"] = FromRGB(29, 24, 21),
+                ["Dark Background"] = FromRGB(22, 18, 15),
+                ["Border"] = FromRGB(98, 52, 24),
+            } },
+            { Name = "Rose", Colors = {
+                ["Accent"] = FromRGB(234, 110, 142),
+                ["Background"] = FromRGB(29, 25, 27),
+                ["Dark Background"] = FromRGB(22, 19, 21),
+                ["Border"] = FromRGB(88, 50, 62),
+            } },
+            { Name = "Poppy", Colors = {
+                ["Accent"] = FromRGB(229, 62, 48),
+                ["Background"] = FromRGB(29, 23, 22),
+                ["Dark Background"] = FromRGB(22, 17, 16),
+                ["Border"] = FromRGB(96, 42, 34),
+            } },
+            { Name = "Navy", Colors = {
+                ["Accent"] = FromRGB(76, 116, 228),
+                ["Background"] = FromRGB(21, 24, 33),
+                ["Dark Background"] = FromRGB(15, 18, 27),
+                ["Border"] = FromRGB(40, 60, 110),
+            } },
+            { Name = "Ruby", Colors = {
+                ["Accent"] = FromRGB(219, 32, 70),
+                ["Background"] = FromRGB(29, 21, 24),
+                ["Dark Background"] = FromRGB(22, 15, 18),
+                ["Border"] = FromRGB(100, 36, 56),
+            } },
+            { Name = "Diamond", Colors = {
+                ["Accent"] = FromRGB(164, 226, 242),
+                ["Background"] = FromRGB(25, 28, 30),
+                ["Dark Background"] = FromRGB(19, 22, 24),
+                ["Border"] = FromRGB(54, 80, 92),
+            } },
+            { Name = "Vermillion", Colors = {
+                ["Accent"] = FromRGB(218, 20, 2),
+                ["Background"] = FromRGB(30, 32, 46),
+                ["Dark Background"] = FromRGB(30, 32, 46),
+                ["Border"] = FromRGB(32, 32, 57),
+            } },
         }
 
         local PresetByName, PresetNames = { }, { }
@@ -2085,6 +2304,18 @@ local Library do
 
         StyleSection:Separator()
 
+        StyleSection:Dropdown({
+            Name = "Font Selector",
+            Options = { "Jersey", "Interum", "Pixel", "Proggy" },
+            Default = 3,
+            Flag = "UI_Font",
+            Callback = function(Selection)
+                Library.Font = Selection
+            end,
+        })
+
+        StyleSection:Separator()
+
         StyleSection:Toggle({
             Name = "Show Keybind List",
             Flag = "UI_KeybindList",
@@ -2094,21 +2325,25 @@ local Library do
             end,
         })
 
-        local MenuKeyToggle = StyleSection:Toggle({
-            Name = "Menu Toggle Key",
-            Flag = "UI_MenuToggle",
-            Default = false,
-            Callback = function() end,
+        StyleSection:Toggle({
+            Name = "Show Watermark",
+            Flag = "UI_Watermark",
+            Default = true,
+            Callback = function(Value)
+                if Library.WatermarkData then
+                    Library.WatermarkData.Visible = Value
+                end
+            end,
         })
 
-        MenuKeyToggle:KeyPicker({
+        local MenuKeyLabel = StyleSection:Label({ Name = "Menu Toggle Key" })
+        MenuKeyLabel:KeyPicker({
             Flag = "UI_MenuKey",
             Default = "RightShift",
             Callback = function() end,
         })
 
-        -- Mirror the bound key onto the main window so it drives the menu toggle.
-        local MenuKP = MenuKeyToggle.AttachedKeyPicker
+        local MenuKP = MenuKeyLabel.AttachedKeyPicker
         if MenuKP then
             local OrigSync = MenuKP.SyncFlag
             function MenuKP:SyncFlag()
@@ -2293,6 +2528,46 @@ local Library do
         }
     end
 
+    -- // Watermark \\ --
+
+    function Library:Watermark(Name)
+        self.WatermarkData = self.WatermarkData or {
+            X = 10, Y = 10,
+            Dragging = false, DragOffsetX = 0, DragOffsetY = 0,
+            Visible = true,
+        }
+        self.WatermarkData.Name = Name or "Watermark"
+        return self.WatermarkData
+    end
+
+    function Library:RenderWatermark()
+        local WM = self.WatermarkData
+        if not WM or not WM.Visible then return end
+
+        local Text = WM.Name .. "  |  " .. MathFloor(get_overlay_fps()) .. " FPS"
+        local Bounds = GetTextBounds(Text)
+        local Width = Bounds.X + 16
+        local Height = 22
+
+        -- Draggable by grabbing the body.
+        if self.Input.MouseClicked and not self.Input.Consumed and self:IsHovering(WM.X, WM.Y, Width, Height) then
+            WM.Dragging = true
+            WM.DragOffsetX = self.Input.MouseX - WM.X
+            WM.DragOffsetY = self.Input.MouseY - WM.Y
+            self.Input.Consumed = true
+        end
+        if not self.Input.MouseDown then WM.Dragging = false end
+        if WM.Dragging then
+            WM.X = self.Input.MouseX - WM.DragOffsetX
+            WM.Y = self.Input.MouseY - WM.DragOffsetY
+        end
+
+        local X, Y = WM.X, WM.Y
+        DrawBox(X, Y, Width, Height, Theme["Black"], Theme["Border"], Theme["Background"])
+        DrawRect(X + 2, Y + 2, Width - 4, 2, Theme["Accent"])
+        DrawText(X + 8, Y + 6, Library.FontSize, Theme["White"], Text)
+    end
+
     -- // Main Render Loop \\ --
 
     Library.MasterVisible = true
@@ -2347,7 +2622,7 @@ local Library do
 
                 DrawBox(BX, BY, BtnSize, BtnSize,
                     Theme["Black"],
-                    Active and Theme["Dark Accent"] or Theme["Border"],
+                    Active and Theme["Accent"] or Theme["Border"],
                     Active and Theme["Accent"] or (Hovered and Theme["Dark Background"] or Theme["Background"]))
 
                 local Bounds = GetTextBounds(Btn.Label)
@@ -2364,11 +2639,7 @@ local Library do
             end
         end
 
-        local WatermarkText = MainWin.Name .. "  |  " .. MathFloor(get_overlay_fps()) .. " FPS"
-        local WatermarkWidth = #WatermarkText * 7 + 16
-        DrawRect(10, 10, WatermarkWidth, 22, Theme["Black"], 0.8)
-        DrawRect(10, 10, WatermarkWidth, 2, Theme["Accent"])
-        DrawText(18, 14, Library.FontSize, Theme["White"], WatermarkText, 0.9)
+        Library:RenderWatermark()
 
         MainWin:RenderKeybindList()
 
