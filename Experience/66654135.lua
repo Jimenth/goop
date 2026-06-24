@@ -279,5 +279,6 @@ ExploitsSection:Button({ Name = "Teleport To Gun", Callback = function() Module.
 
 -- // Initalize \\ --
 
+Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.Render:Connect(Module.Function.Render)
