@@ -25,7 +25,7 @@ local Module = {
     Paths = {}
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
@@ -360,5 +360,5 @@ end
 -- // Initalize \\ --
 
 PlayerSection:Button({ Name = "Secure Bags", Callback = function() Module.Function:TeleportBags() end })
-Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
+Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.PostLocal:Connect(Module.Function.AmmunitionLoop)
