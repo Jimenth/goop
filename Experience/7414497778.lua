@@ -34,7 +34,7 @@ local Convex = {
     }
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
@@ -436,5 +436,5 @@ task.spawn(function()
 end)
 
 -- // Initalize \\ --
-Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
+Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.Render:Connect(Render)
