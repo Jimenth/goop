@@ -61,12 +61,12 @@ Creates a single Section frame split into tabbed sub-sections
 *Returns one handle per sub-section, in the order listed. Only the selected tab's Elements render; click a tab to switch. Each sub-section hosts the same Elements as a regular Section.*
 
 ```lua
-local Ragebot, Originscan, Visuals = Page:MultiSection({
+local Rage, Visuals = Page:MultiSection({
     Sections = {string},
     Side = number
 })
 
-Ragebot:Toggle({ Name = "Enabled", Flag = "RageEnabled" })
+Rage:Toggle({ Name = "Enabled", Flag = "RageEnabled" })
 Visuals:Slider({ Name = "FOV", Min = 0, Max = 180, Default = 90 })
 ```
 
