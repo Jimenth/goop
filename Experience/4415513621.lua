@@ -18,7 +18,7 @@ local Module = {
     }
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
@@ -170,7 +170,7 @@ task.spawn(function()
 end)
 
 -- // Initalize \\ --
-Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
+Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
 task.spawn(function() while true do task.wait(0.5) Module.Function:Cache() end end)
