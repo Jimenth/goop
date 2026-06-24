@@ -170,6 +170,7 @@ task.spawn(function()
 end)
 
 -- // Initalize \\ --
+Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
