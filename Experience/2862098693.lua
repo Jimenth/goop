@@ -47,8 +47,8 @@ local Module = {
 memory.set_write_strength(1e-6)
 task.wait(4)
 
-local Library = loadfile("Source.lua")()
-local Offsets = loadfile("Offsets.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
 
 -- // Interface \\ --
 
@@ -60,7 +60,7 @@ local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 local WeaponSection = ExploitsTab:Section({Name = "Weapon", Side = 1})
 local ExploitsSection = ExploitsTab:Section({Name = "Exploits", Side = 2})
 local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
-local GameSection = VisualsTab:Section({Name = "Game", Side = 12})
+local GameSection = VisualsTab:Section({Name = "Game", Side = 1})
 
 -- // Weapon Section \\ --
 
@@ -68,32 +68,32 @@ WeaponSection:Toggle({Name = "Modify Recoil", Flag = "No Recoil", Default = fals
 WeaponSection:Slider({Name = "Recoil Percentage", Flag = "Recoil Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 WeaponSection:Separator()
 WeaponSection:Toggle({Name = "Modify Drop", Flag = "No Drop", Default = false, Callback = function(Value) end})
-WeaponSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+WeaponSection:Slider({Name = "Drop Percentage", Flag = "Drop Amount", Decimals = 1, Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
 
 -- // Exploits Section \\ --
 
 ExploitsSection:Toggle({Name = "Item Reach", Flag = "Item Reach", Default = false, Callback = function(Value) end})
-ExploitsSection:Slider({Name = "Reach Extension", Flag = "Reach Extension", Min = 2, Max = 14, Default = 5, Callback = function(Value) end})
+ExploitsSection:Slider({Name = "Reach Extension", Flag = "Reach Extension", Decimals = 0.5, Min = 2, Max = 14, Default = 5, Callback = function(Value) end})
 
 -- // World Section \\ --
 
 WorldSection:Toggle({Name = "Render Drops", Flag = "Render Drops", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drop", Flag = "Drop Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
-WorldSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+WorldSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Decimals = 1, Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Dropdown({Name = "Item Filter", Flag = "Drop Filter", Multi = true, Options = {"Weapons", "Attachments", "Magazines", "Ammo", "Medical", "Armor", "Clothing", "Visors", "Optics", "Melee", "Grenades", "Deployables", "Food", "Keys", "Tools", "Materials", "Electronics", "Valuables", "Maps", "Special"}, Default = {1, 3}, Callback = function(Value) end})
 WorldSection:Separator()
 WorldSection:Toggle({Name = "Render Corpses", Flag = "Render Corpses", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Corpse", Flag = "Corpse Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
-WorldSection:Slider({Name = "Maximum Render", Flag = "Corpses Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+WorldSection:Slider({Name = "Maximum Render", Flag = "Corpses Render", Decimals = 1, Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Separator()
 WorldSection:Toggle({Name = "Render Vehicles", Flag = "Render Vehicles", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Vehicle", Flag = "Vehicle Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
-WorldSection:Slider({Name = "Maximum Render", Flag = "Vehicles Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+WorldSection:Slider({Name = "Maximum Render", Flag = "Vehicles Render", Decimals = 1, Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 WorldSection:Separator()
 WorldSection:Toggle({Name = "Render Exits", Flag = "Render Exits", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Exit", Flag = "Exit Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
-WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
+WorldSection:Slider({Name = "Maximum Render", Flag = "Exits Render", Decimals = 1, Min = 0, Max = 1000, Default = 500, Callback = function(Value) end})
 
 -- // Game Section \\ --
 
 GameSection:Toggle({Name = "Zoom", Flag = "Zoom", Default = false, Callback = function(Value) end}):KeyPicker({ Flag = "Zoom Key", Default = "Z", Callback = function() if not Library.Flags["Zoom"] then return nil end Module.Stored.Zoom = not Module.Stored.Zoom end})
-GameSection:Slider({Name = "Zoom Amount", Flag = "Zoom Amount", Min = 0, Max = 90, Default = 25, Callback = function(Value) end})
+GameSection:Slider({Name = "Zoom Amount", Flag = "Zoom Amount", Decimals = 1, Min = 0, Max = 90, Default = 25, Callback = function(Value) end})
 GameSection:Separator()
 GameSection:Toggle({Name = "Remove Screen Effects", Flag = "Remove Screen Effects", Default = false, Callback = function(Value) end})
 
@@ -1204,48 +1204,63 @@ end)
 
 -- // Target Indicators (Shit) \\ --
 
+local function DrawRect(X, Y, W, H, Color, Opacity)
+    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, H), Color, Opacity or 1)
+end
+
+local function DrawText(X, Y, Color, Text, Opacity, Center)
+    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.FontSize, Color, Opacity or 1, Text, Center or false, Library.Font)
+end
+
+local function GetTextBounds(Text)
+    return DrawingImmediate.GetTextBounds(Library.Font, Library.FontSize, Text)
+end
+
+local function DrawBox(X, Y, W, H, Outer, Border, Fill, Opacity)
+    DrawRect(X, Y, W, H, Outer, Opacity)
+    DrawRect(X + 1, Y + 1, W - 2, H - 2, Border, Opacity)
+    DrawRect(X + 2, Y + 2, W - 4, H - 4, Fill, Opacity)
+end
+
 function Module.Function:DrawIndicator(Position, Character, Transparency)
-    local X = Position.X
-    local Y = Position.Y
+    local X, Y = Position.X, Position.Y
     local Width = Interface.Dimensions.Width
     local Height = Interface.Dimensions.Height
-    local C = Library.Appearance.Coloring
+
     local ContentX = X + 4
     local ContentY = Y + 4
     local ContentW = Width - 8
     local ContentH = Height - 8
 
-    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, Height), C.Black, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, Height - 2), C.Border, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, Height - 4), C.Background, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 2), C.Accent, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(ContentX, ContentY), Vector2.new(ContentW, ContentH), C.Background, Transparency)
+    DrawBox(X, Y, Width, Height, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
+    DrawRect(X + 2, Y + 2, Width - 4, 2, Library.Theme.Accent, Transparency)
+    DrawRect(ContentX, ContentY, ContentW, ContentH, Library.Theme.Background, Transparency)
 
     local WeaponName = Module.Function:GetWeapon(Character) or "None"
     if typeof(WeaponName) ~= "string" then WeaponName = tostring(WeaponName or "") end
     if WeaponName == "" or WeaponName == "None" then WeaponName = "No Weapon" end
-    DrawingImmediate.OutlinedText(Vector2.new(X + Width / 2, ContentY + 12), Library.Appearance.FontSize, C.White, Transparency, WeaponName, true, Library.Appearance.Font)
+    DrawText(X + Width / 2, ContentY + 12, Library.Theme.White, WeaponName, Transparency, true)
 
     local CurrentHealth = 0
     local MaxHealth = 100
     if Character then
-        local Hum = Module.Stored.Cache.Humanoid[Character]
-        if not Hum or not Hum.Parent then
-            Hum = Character:FindFirstChildOfClass("Humanoid")
-            Module.Stored.Cache.Humanoid[Character] = Hum
+        local Humanoid = Module.Stored.Cache.Humanoid[Character]
+        if not Humanoid or not Humanoid.Parent then
+            Humanoid = Character:FindFirstChildOfClass("Humanoid")
+            Module.Stored.Cache.Humanoid[Character] = Humanoid
         end
-        if Hum then
+        if Humanoid then
             if Module.Stored.Cache.Health[Character] == nil then
-                Module.Stored.Cache.Health[Character] = tonumber(Hum.MaxHealth) or 100
+                Module.Stored.Cache.Health[Character] = tonumber(Humanoid.MaxHealth) or 100
             end
             MaxHealth = Module.Stored.Cache.Health[Character] or 100
-            CurrentHealth = tonumber(Hum.Health) or 0
+            CurrentHealth = tonumber(Humanoid.Health) or 0
         end
     end
 
     local Percent = math.clamp((MaxHealth == 0) and 0 or (CurrentHealth / MaxHealth), 0, 1)
     local BarW = ContentW - 18
-    local BarH = Library.Appearance.FontSize + 4
+    local BarH = Library.FontSize + 4
     local BarX = ContentX + 9
     local BarY = ContentY + ContentH - (BarH + 6)
     local FillW = math.floor((BarW - 4) * Percent)
@@ -1257,44 +1272,29 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
         if LocalHumanoid then
             local LocalHealth = LocalHumanoid.Health
             local Indication = "Even"
-            local IndicationColor = C.Dim
-
+            local IndicationColor = Library.Theme.Dim
             if LocalHealth > CurrentHealth then
-                Indication = "You're Winning!"
-                IndicationColor = Color3.fromRGB(0, 255, 0)
+                Indication, IndicationColor = "You're Winning!", Color3.fromRGB(0, 255, 0)
             elseif LocalHealth < CurrentHealth then
-                Indication = "You're Losing!"
-                IndicationColor = Color3.fromRGB(255, 0, 0)
+                Indication, IndicationColor = "You're Losing!", Color3.fromRGB(255, 0, 0)
             end
-
-            DrawingImmediate.OutlinedText(
-                Vector2.new(BarX, BarY - 15),
-                Library.Appearance.FontSize, IndicationColor, Transparency,
-                Indication, false, Library.Appearance.Font
-            )
+            DrawText(BarX, BarY - 15, IndicationColor, Indication, Transparency)
         end
     end
 
-    DrawingImmediate.FilledRectangle(Vector2.new(BarX, BarY), Vector2.new(BarW, BarH), C.Black, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(BarX + 1, BarY + 1), Vector2.new(BarW - 2, BarH - 2), C.Border, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(BarX + 2, BarY + 2), Vector2.new(BarW - 4, BarH - 4), C.Background, Transparency)
+    DrawBox(BarX, BarY, BarW, BarH, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
     if FillW > 0 then
-        DrawingImmediate.FilledRectangle(Vector2.new(BarX + 2, BarY + 2), Vector2.new(FillW, BarH - 4), C.AccentDark, Transparency)
-        DrawingImmediate.FilledRectangle(Vector2.new(BarX + 2, BarY + 2), Vector2.new(math.max(FillW - 2, 0), BarH - 4), C.Accent, Transparency)
+        DrawRect(BarX + 2, BarY + 2, FillW, BarH - 4, Library.Theme["Dark Accent"], Transparency)
+        DrawRect(BarX + 2, BarY + 2, math.max(FillW - 2, 0), BarH - 4, Library.Theme.Accent, Transparency)
     end
 
     local HealthText = tostring(math.floor(CurrentHealth)) .. "/" .. tostring(MaxHealth)
-    DrawingImmediate.OutlinedText(
-        Vector2.new(BarX + BarW / 2, BarY + (BarH / 2) - 5),
-        Library.Appearance.FontSize, C.White, Transparency,
-        HealthText, true, Library.Appearance.Font
-    )
+    DrawText(BarX + BarW / 2, BarY + (BarH / 2) - 5, Library.Theme.White, HealthText, Transparency, true)
 
-    local Kills = 0
-    local Deaths = 0
+    local Kills, Deaths = 0, 0
     if game.ReplicatedStorage:FindFirstChild("Players") and Character then
-        local Name = nil
-        for _, Player in ipairs(game:GetService("Players"):GetChildren()) do
+        local Name
+        for _, Player in game:GetService("Players"):GetChildren() do
             if Player.Character == Character then
                 Name = Player.Name
                 break
@@ -1304,7 +1304,9 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
         if Name then
             local PlayerFolder = game.ReplicatedStorage:FindFirstChild("Players"):FindFirstChild(Name)
             if PlayerFolder then
-                local Stats = PlayerFolder:FindFirstChild("Status") and PlayerFolder.Status:FindFirstChild("Journey") and PlayerFolder.Status.Journey:FindFirstChild("Statistics")
+                local Stats = PlayerFolder:FindFirstChild("Status")
+                    and PlayerFolder.Status:FindFirstChild("Journey")
+                    and PlayerFolder.Status.Journey:FindFirstChild("Statistics")
                 if Stats then
                     Kills = Stats:GetAttribute("Kills") or 0
                     Deaths = Stats:GetAttribute("Deaths") or 0
@@ -1314,34 +1316,25 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
     end
 
     local Ratio = Deaths == 0 and string.format("%.2f", Kills) or string.format("%.2f", Kills / Deaths)
-
-    local KDTextBounds = DrawingImmediate.GetTextBounds(Library.Appearance.Font, Library.Appearance.FontSize, "K/D: " .. Ratio)
-    local KDX = BarX + BarW - KDTextBounds.X
-    local KDY = BarY - 15
-
-    DrawingImmediate.OutlinedText(
-        Vector2.new(KDX, KDY),
-        Library.Appearance.FontSize, C.White, Transparency,
-        "K/D: " .. Ratio, false, Library.Appearance.Font
-    )
+    local KDText = "K/D: " .. Ratio
+    DrawText(BarX + BarW - GetTextBounds(KDText).X, BarY - 15, Library.Theme.White, KDText, Transparency)
 end
 
+-- // Clothing \\ --
+
 function Module.Function:DrawClothing(Position, Character, Transparency)
-    local X = Position.X
-    local Y = Position.Y
+    local X, Y = Position.X, Position.Y
     local Width = 400
     local Height = 70
-    local C = Library.Appearance.Coloring
+
     local ContentX = X + 4
     local ContentY = Y + 4
     local ContentW = Width - 8
     local ContentH = Height - 8
 
-    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(Width, Height), C.Black, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 1, Y + 1), Vector2.new(Width - 2, Height - 2), C.Border, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, Height - 4), C.Background, Transparency)
-    DrawingImmediate.FilledRectangle(Vector2.new(X + 2, Y + 2), Vector2.new(Width - 4, 2), C.Accent, Transparency) 
-    DrawingImmediate.FilledRectangle(Vector2.new(ContentX, ContentY), Vector2.new(ContentW, ContentH), C.Background, Transparency)
+    DrawBox(X, Y, Width, Height, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
+    DrawRect(X + 2, Y + 2, Width - 4, 2, Library.Theme.Accent, Transparency)
+    DrawRect(ContentX, ContentY, ContentW, ContentH, Library.Theme.Background, Transparency)
 
     local Mask, Head, Chestrig, Leg, Back = Module.Function:GetClothing(Character)
 
@@ -1357,29 +1350,25 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
         return string.sub(String, 1, Maximum - 2) .. ".."
     end
 
-    for Index, Item in ipairs({{Name = "Mask", Value = Mask or "None"}, {Name = "Helmet", Value = Head or "None"}, {Name = "Rig", Value = Chestrig  or "None"}, {Name = "Backpack", Value = Back or "None"}, {Name = "Legs", Value = Leg or "None"}}) do
-        local BoxX = StartX + ((Index - 1) * (BoxWidth + Spacing))
+    local Slots = {
+        { Name = "Mask", Value = Mask or "None" },
+        { Name = "Helmet", Value = Head or "None" },
+        { Name = "Rig", Value = Chestrig or "None" },
+        { Name = "Backpack", Value = Back or "None" },
+        { Name = "Legs", Value = Leg or "None" },
+    }
 
-        DrawingImmediate.OutlinedText(
-            Vector2.new(BoxX + BoxWidth / 2, LabelY),
-            Library.Appearance.FontSize, C.Dim, Transparency,
-            Item.Name, true, Library.Appearance.Font
-        )
+    for Index, Item in Slots do
+        local BoxX = StartX + (Index - 1) * (BoxWidth + Spacing)
 
-        DrawingImmediate.FilledRectangle(Vector2.new(BoxX, BoxY), Vector2.new(BoxWidth, BoxHeight), C.Black, Transparency)
-        DrawingImmediate.FilledRectangle(Vector2.new(BoxX + 1, BoxY + 1), Vector2.new(BoxWidth - 2, BoxHeight - 2), C.Border, Transparency)
-        DrawingImmediate.FilledRectangle(Vector2.new(BoxX + 2, BoxY + 2), Vector2.new(BoxWidth - 4, BoxHeight - 4), C.Background, Transparency)
-
-        DrawingImmediate.OutlinedText(
-            Vector2.new(BoxX + BoxWidth / 2, BoxY + BoxHeight / 2 - 5),
-            Library.Appearance.FontSize, C.White, Transparency,
-            Shorten(Item.Value, 11), true, Library.Appearance.Font
-        )
+        DrawText(BoxX + BoxWidth / 2, LabelY, Library.Theme.Dim, Item.Name, Transparency, true)
+        DrawBox(BoxX, BoxY, BoxWidth, BoxHeight, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
+        DrawText(BoxX + BoxWidth / 2, BoxY + BoxHeight / 2 - 5, Library.Theme.White, Shorten(Item.Value, 11), Transparency, true)
     end
 end
 
 -- // Initalize \\ --
-Library:NavBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
+Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Module.Function:CacheBallistics()
 local Restored = false
 
