@@ -250,6 +250,12 @@ Library:NavigationBar(Library.Windows[1], StyleWin, ConfigWin)
 Window:Notify(string, number)
 ```
 
+**Watermark |**
+
+```lua
+Library:Watermark(string)
+```
+
 ***Flags & Configs***
 
 *Every Element given a `Flag` writes its current value into `Library.Flags[Flag]`, keyed by type:*
