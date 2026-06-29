@@ -18,7 +18,7 @@ local Module = {
     }
 }
 
-local Library = loadfile("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
