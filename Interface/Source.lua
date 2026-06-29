@@ -1,7 +1,6 @@
-local LoadingTick = os.clock()
-
 local Library do
     local UserInputService = game:GetService("UserInputService")
+    local Players = game:GetService("Players")
     local Workspace = game:GetService("Workspace")
 
     local Camera = Workspace.CurrentCamera
@@ -989,9 +988,20 @@ local Library do
     end
 
     function Pages:Section(Data)
-        -- A page holds at most 2 sections; extras fold into the last one.
-        if #self.Sections >= 2 then
-            return self.Sections[#self.Sections]
+        -- A page holds at most 2 *regular* sections; extras fold into the last one.
+        -- MultiSection/ScrollableSection entries (and MultiSection sub-sections) are
+        -- registered in self.Sections too, so they're excluded from the count and the
+        -- fold target — otherwise a :Section after a :MultiSection would fold into the
+        -- wrong object.
+        local RegularCount, LastRegular = 0, nil
+        for _, Section in self.Sections do
+            if not Section.MultiSection and not Section.IsMultiSection and not Section.Scrollable then
+                RegularCount = RegularCount + 1
+                LastRegular = Section
+            end
+        end
+        if RegularCount >= 2 then
+            return LastRegular
         end
         return CreateSection(self, Data or { })
     end
@@ -2176,6 +2186,12 @@ local Library do
                 ["Dark Background"] = FromRGB(20, 20, 20),
                 ["Border"] = FromRGB(50, 50, 50),
             } },
+            { Name = "Vermillion", Colors = {
+                ["Accent"] = FromRGB(218, 20, 2),
+                ["Background"] = FromRGB(30, 32, 46),
+                ["Dark Background"] = FromRGB(30, 32, 46),
+                ["Border"] = FromRGB(32, 32, 57),
+            } },
             { Name = "Gamesense", Colors = {
                 ["Accent"] = FromRGB(181, 249, 21),
                 ["Background"] = FromRGB(28, 28, 28),
@@ -2265,12 +2281,6 @@ local Library do
                 ["Background"] = FromRGB(25, 28, 30),
                 ["Dark Background"] = FromRGB(19, 22, 24),
                 ["Border"] = FromRGB(54, 80, 92),
-            } },
-            { Name = "Vermillion", Colors = {
-                ["Accent"] = FromRGB(218, 20, 2),
-                ["Background"] = FromRGB(30, 32, 46),
-                ["Dark Background"] = FromRGB(30, 32, 46),
-                ["Border"] = FromRGB(32, 32, 57),
             } },
         }
 
@@ -2549,7 +2559,6 @@ local Library do
         local Width = Bounds.X + 16
         local Height = 22
 
-        -- Draggable by grabbing the body.
         if self.Input.MouseClicked and not self.Input.Consumed and self:IsHovering(WM.X, WM.Y, Width, Height) then
             WM.Dragging = true
             WM.DragOffsetX = self.Input.MouseX - WM.X
@@ -2566,6 +2575,147 @@ local Library do
         DrawBox(X, Y, Width, Height, Theme["Black"], Theme["Border"], Theme["Background"])
         DrawRect(X + 2, Y + 2, Width - 4, 2, Theme["Accent"])
         DrawText(X + 8, Y + 6, Library.FontSize, Theme["White"], Text)
+    end
+
+    -- // Group Ranked Players \\ --
+
+    function Library:GroupList(GroupId, Ranks)
+        assert(type(GroupId) == "number", "GroupList: GroupId must be a number")
+        assert(type(Ranks) == "table", "GroupList: Ranks must be a table of rank names")
+
+        local RankSet = { }
+        for _, Name in Ranks do
+            RankSet[tostring(Name):lower()] = true
+        end
+
+        local Data = {
+            GroupId = GroupId,
+            Matching = { },
+            Title = "Moderator List",
+            Width = 210,
+            X = self.Viewport.X - 210 - 10,
+            Y = self.Viewport.Y / 2 - 80,
+            Visible = true,
+            Dragging = false,
+            DragOffsetX = 0,
+            DragOffsetY = 0,
+        }
+        self.GroupRankedData = Data
+
+        local Roles = { }
+
+        local function Rebuild()
+            Data.Matching = { }
+            for _, Entry in Roles do
+                if type(Entry.Role) == "string" and RankSet[Entry.Role:lower()] then
+                    Data.Matching[#Data.Matching + 1] = { Name = Entry.Name, Role = Entry.Role }
+                end
+            end
+            TableSort(Data.Matching, function(A, B) return A.Name:lower() < B.Name:lower() end)
+        end
+
+        local function ResolveRole(UserId)
+            local Url = StringFormat("https://groups.roblox.com/v1/users/%d/groups/roles", UserId)
+
+            local Ok, Body = pcall(function() return game:HttpGet(Url) end)
+            if not Ok or type(Body) ~= "string" then return nil end
+
+            local Decoded
+            Ok, Decoded = pcall(function() return crypt.json.decode(Body) end)
+            if not Ok or type(Decoded) ~= "table" or type(Decoded.data) ~= "table" then return nil end
+
+            for _, Entry in Decoded.data do
+                if Entry.group and Entry.group.id == GroupId and Entry.role then
+                    return Entry.role.name
+                end
+            end
+            return nil
+        end
+
+        task.spawn(function()
+            while Library.GroupRankedData == Data do
+                local Present = { }
+                for _, Player in Players:GetChildren() do
+                    local Id = Player.UserId
+                    Present[Id] = true
+                    local Entry = Roles[Id]
+                    if Entry then
+                        Entry.Name = Player.Name
+                    else
+                        Roles[Id] = { Name = Player.Name, Role = ResolveRole(Id) or false }
+                        Rebuild()
+                        task.wait(0.1)
+                    end
+                end
+
+                for Id in Roles do
+                    if not Present[Id] then Roles[Id] = nil end
+                end
+
+                Rebuild()
+                task.wait(2)
+            end
+        end)
+
+        return Data
+    end
+
+    function Library:RenderGroupRanked()
+        local Data = self.GroupRankedData
+        if not Data or not Data.Visible then return end
+
+        local Input = self.Input
+        local RowH = 22
+        local HeaderH = 28
+        local Padding = 8
+        local Count = #Data.Matching
+        local TotalH = HeaderH + MathMax(Count, 1) * RowH + Padding
+
+        if Input.MouseClicked and not Input.Consumed and self:IsHovering(Data.X, Data.Y, Data.Width, HeaderH) then
+            Data.Dragging = true
+            Data.DragOffsetX = Input.MouseX - Data.X
+            Data.DragOffsetY = Input.MouseY - Data.Y
+            Input.Consumed = true
+        end
+        if not Input.MouseDown then Data.Dragging = false end
+        if Data.Dragging then
+            Data.X = Input.MouseX - Data.DragOffsetX
+            Data.Y = Input.MouseY - Data.DragOffsetY
+        end
+
+        local X, Y, W = Data.X, Data.Y, Data.Width
+
+        DrawBox(X, Y, W, TotalH, Theme["Black"], Theme["Border"], Theme["Background"])
+        DrawRect(X + 2, Y + 2, W - 4, 2, Theme["Accent"])
+
+        local TitleBounds = GetTextBounds(Data.Title)
+        DrawText(X + MathFloor((W - TitleBounds.X) / 2), Y + 8, Library.FontSize, Theme["White"], Data.Title)
+
+        local CX = X + 4
+        local CY = Y + HeaderH
+        local CW = W - 8
+        local ContentH = TotalH - HeaderH - Padding
+        DrawRect(CX, CY, CW, ContentH, Theme["Border"])
+        DrawRect(CX + 1, CY + 1, CW - 2, ContentH - 2, Theme["Dark Background"])
+
+        if Count == 0 then
+            local NoneBounds = GetTextBounds("None in server")
+            DrawText(CX + MathFloor((CW - NoneBounds.X) / 2), CY + MathFloor((RowH - NoneBounds.Y) / 2) + 2, Library.FontSize, Theme["Dim"], "None in server")
+            return
+        end
+
+        for Index, Entry in Data.Matching do
+            local RowY = CY + (Index - 1) * RowH + 2
+
+            DrawText(CX + 6, RowY + 5, Library.FontSize, Theme["White"], Entry.Name)
+
+            local RoleBounds = GetTextBounds(Entry.Role)
+            DrawText(CX + CW - RoleBounds.X - 6, RowY + 5, Library.FontSize, Theme["Accent"], Entry.Role)
+
+            if Index < Count then
+                DrawRect(CX + 2, RowY + RowH - 1, CW - 4, 1, Theme["Border"], 0.5)
+            end
+        end
     end
 
     -- // Main Render Loop \\ --
@@ -2640,6 +2790,7 @@ local Library do
         end
 
         Library:RenderWatermark()
+        Library:RenderGroupRanked()
 
         MainWin:RenderKeybindList()
 
