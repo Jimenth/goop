@@ -18,7 +18,7 @@ local Module = {
     }
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadfile("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua")()
 
 -- // Interface \\ --
 
