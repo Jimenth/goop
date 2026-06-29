@@ -60,6 +60,7 @@ VehiclesSection:Toggle({Name = "Use Occupied Color", Flag = "Use Occupied Color"
 -- // Modules Section \\ --
 
 ModulesSection:Toggle({Name = "Enabled", Flag = "Render Modules", Default = false, Callback = function(Value) end})
+ModulesSection:Slider({Name = "Render View", Flag = "Field of View ", Min = 0, Max = 1500, Default = 500, Callback = function(Value) end})
 ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 0.5, Callback = function(Color) end})
 ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 0.5, Callback = function(Color) end})
 
@@ -400,7 +401,7 @@ function Module.Function:Render()
         local Viewport = Camera.ViewportSize
         local CenterX = Viewport.X * 0.5
         local CenterY = Viewport.Y * 0.5
-        local Half = 500 * 0.5
+        local Half = Library.Flags["Field of View"] * 0.5
 
         for _, Data in pairs(Module.Stored.Vehicles) do
             local Vehicle = Data.Vehicle
