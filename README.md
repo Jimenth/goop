@@ -256,6 +256,12 @@ Window:Notify(string, number)
 Library:Watermark(string)
 ```
 
+**Group List |**
+*Just a Moderator List, expects group ID and Rank Names*
+```lua
+Library:GroupList(number, table)
+```
+
 ***Flags & Configs***
 
 *Every Element given a `Flag` writes its current value into `Library.Flags[Flag]`, keyed by type:*
