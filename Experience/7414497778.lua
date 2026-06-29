@@ -13,10 +13,11 @@ local Module = {
         Vehicles = Workspace:FindFirstChild("SpawnedVehicles"),
         Placed = Workspace:FindFirstChild("PlacedBuildings")
     },
-    
+
     Stored = {
         Vehicles = {},
-        Drones = {}
+        Drones = {},
+        Armor = {}
     }
 }
 
@@ -41,9 +42,12 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimen
 local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
 
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
+local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
+
 local VehiclesSection = VisualsTab:Section({Name = "Vehicles", Side = 1})
 local ModulesSection = VisualsTab:Section({Name = "Modules", Side = 2})
-local DronesSection = VisualsTab:Section({Name = "Drones", Side = 2})
+
+local ExploitsSection = ExploitsTab:Section({Name = "Exploits", Side = 1})
 
 -- // Vehicles Section \\ --
 
@@ -59,24 +63,34 @@ ModulesSection:Toggle({Name = "Enabled", Flag = "Render Modules", Default = fals
 ModulesSection:Toggle({Name = "Render Ammo", Flag = "Vehicle Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Ammo", Flag = "Ammo Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 0.5, Callback = function(Color) end})
 ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Engine", Flag = "Engine Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 0.5, Callback = function(Color) end})
 
--- // Drone Section \\ --
+ModulesSection:Separator()
 
-DronesSection:Toggle({Name = "Enabled", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+ModulesSection:Toggle({Name = "Render Drones", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 
--- // Functions \\ -- 
+-- // Exploits Section \\ --
 
-local function TruncateBuffer(Buffer, NewSize, HighWaterMark)
+ExploitsSection:Toggle({Name = "Disable Armor", Flag = "Disable Armor", Default = false, Callback = function(Value)
+    if Value then
+        Module.Function:ScanArmor()
+    else
+        Module.Function:RestoreArmor()
+    end
+end})
+
+-- // Functions \\ --
+
+function Module.Function:TruncateBuffer(Buffer, NewSize, HighWaterMark)
     for Index = NewSize + 1, HighWaterMark do
         Buffer[Index] = nil
     end
     return math.max(NewSize, HighWaterMark)
 end
 
-local function CrossDimension(OriginX, OriginY, PointAX, PointAY, PointBX, PointBY)
+function Module.Function:CrossDimension(OriginX, OriginY, PointAX, PointAY, PointBX, PointBY)
     return (PointAX - OriginX) * (PointBY - OriginY) - (PointAY - OriginY) * (PointBX - OriginX)
 end
 
-local function CalculateConvexHull(Points, PointCount, Outer)
+function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     if PointCount == 0 then return 0 end
     if PointCount == 1 then Outer[1] = Points[1]; return 1 end
     if PointCount == 2 then Outer[1] = Points[1]; Outer[2] = Points[2]; return 2 end
@@ -89,7 +103,7 @@ local function CalculateConvexHull(Points, PointCount, Outer)
 
     for Index = 1, PointCount do
         local Point = Points[Index]
-        while Size >= 2 and CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
+        while Size >= 2 and self:CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
             Size = Size - 1
         end
         Size = Size + 1
@@ -99,7 +113,7 @@ local function CalculateConvexHull(Points, PointCount, Outer)
     local LowerHullSize = Size
     for Index = PointCount - 1, 1, -1 do
         local Point = Points[Index]
-        while Size > LowerHullSize and CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
+        while Size > LowerHullSize and self:CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
             Size = Size - 1
         end
         Size = Size + 1
@@ -109,18 +123,26 @@ local function CalculateConvexHull(Points, PointCount, Outer)
     return Size - 1
 end
 
-local function ProjectPartCorners(Part, WriteOffset)
-    local PositionX = Part.Position.X
-    local PositionY = Part.Position.Y
-    local PositionZ = Part.Position.Z
+function Module.Function:ProjectPartCorners(Part, WriteOffset)
+    if not (Part and Part:IsA("BasePart")) then
+        return WriteOffset
+    end
 
-    local HalfSizeX = Part.Size.X * 0.5
-    local HalfSizeY = Part.Size.Y * 0.5
-    local HalfSizeZ = Part.Size.Z * 0.5
+    local PartCFrame = Part.CFrame
+    local Position = PartCFrame.Position
+    local Size = Part.Size
 
-    local RightVector = Part.RightVector
-    local UpVector = Part.UpVector
-    local LookVector = Part.LookVector
+    local PositionX = Position.X
+    local PositionY = Position.Y
+    local PositionZ = Position.Z
+
+    local HalfSizeX = Size.X * 0.5
+    local HalfSizeY = Size.Y * 0.5
+    local HalfSizeZ = Size.Z * 0.5
+
+    local RightVector = PartCFrame.RightVector
+    local UpVector = PartCFrame.UpVector
+    local LookVector = PartCFrame.LookVector
 
     local RightX = RightVector.X * HalfSizeX
     local RightY = RightVector.Y * HalfSizeX
@@ -168,7 +190,7 @@ local function ProjectPartCorners(Part, WriteOffset)
     return WriteOffset
 end
 
-local function DrawPolygon(Hull, Size, Color, Opacity)
+function Module.Function:DrawPolygon(Hull, Size, Color, Opacity)
     if Size < 3 then return end
 
     local Pivot = Vector2.new(Hull[1].X, Hull[1].Y)
@@ -177,7 +199,7 @@ local function DrawPolygon(Hull, Size, Color, Opacity)
     end
 end
 
-local function DrawOutline(Hull, Size, Color, Opacity, Thickness)
+function Module.Function:DrawOutline(Hull, Size, Color, Opacity, Thickness)
     if Size < 2 then return end
 
     for Index = 1, Size do
@@ -199,11 +221,11 @@ local function DrawOutline(Hull, Size, Color, Opacity, Thickness)
     DrawingImmediate.Polyline(Convex.Scratch.Poly, Color, Opacity, Thickness)
 end
 
-local function NotNumerical(Name)
+function Module.Function:NotNumerical(Name)
     return Name:match("%a") ~= nil
 end
 
-local function GetPlayerTeam(Name)
+function Module.Function:GetPlayerTeam(Name)
     if typeof(Name) ~= "string" then return nil end
 
     local Player = Players:FindFirstChild(Name)
@@ -217,16 +239,16 @@ local function GetPlayerTeam(Name)
     return "Unknown Team"
 end
 
-local function GetVehicleTeam(Vehicle)
+function Module.Function:GetVehicleTeam(Vehicle)
     if not Vehicle then return nil end
 
     local OwnerName = Vehicle:GetAttribute("Requester")
     if typeof(OwnerName) ~= "string" then return nil end
-    
-    return GetPlayerTeam(OwnerName)
+
+    return self:GetPlayerTeam(OwnerName)
 end
 
-local function VehicleCache()
+function Module.Function:VehicleCache()
     if not Module.Game.Vehicles then return end
 
     local Current = {}
@@ -263,7 +285,7 @@ local function VehicleCache()
                     elseif ModuleName:find("ammo") or ModuleName:find("atgm") then
                         local Parts = {}
                         for _, Child in ipairs(DamageModule:GetChildren()) do
-                            if Child:IsA("BasePart") and NotNumerical(Child.Name) and not Child.Name:find("cube") then
+                            if Child:IsA("BasePart") and self:NotNumerical(Child.Name) and not Child.Name:find("cube") then
                                 Parts[#Parts + 1] = Child
                             end
                         end
@@ -285,7 +307,7 @@ local function VehicleCache()
     end
 end
 
-local function DroneCache()
+function Module.Function:DroneCache()
     if not Module.Game.Placed then print("Placed is nil") return end
 
     local Current = {}
@@ -298,7 +320,7 @@ local function DroneCache()
                 local DroneModel = Drone:FindFirstChild("Drone")
                 if not DroneModel then continue end
 
-                local DronePart = DroneModel and DroneModel:IsA("Model") and DroneModel:FindFirstChild("Drone") 
+                local DronePart = DroneModel and DroneModel:IsA("Model") and DroneModel:FindFirstChild("Drone")
                 if not DronePart then continue end
 
                 local OwnerTag = Drone:FindFirstChild("OwnershipTag")
@@ -322,53 +344,107 @@ local function DroneCache()
     end
 end
 
-local function Render()
+function Module.Function:ScanArmor()
+    if not Library.Flags["Disable Armor"] then return end
+    if not Module.Game.Vehicles then return end
+
+    local Cache = Module.Stored.Armor
+
+    for _, Vehicle in ipairs(Module.Game.Vehicles:GetChildren()) do
+        if Vehicle.Name == "DONOT" or Vehicle.ClassName ~= "Model" then continue end
+
+        local Values = Cache[Vehicle]
+        if not Values then
+            Values = {}
+            for _, Item in ipairs(Vehicle:GetDescendants()) do
+                if Item:IsA("NumberValue") and Item.Name == "ArmourValue" then
+                    Values[Item] = Item.Value
+                end
+            end
+            Cache[Vehicle] = Values
+        end
+        for ValueObject, _ in pairs(Values) do
+            if ValueObject.Parent and ValueObject.Value ~= 0 then
+                ValueObject.Value = 0
+            end
+        end
+    end
+
+    for Vehicle in pairs(Cache) do
+        if not Vehicle.Parent then
+            Cache[Vehicle] = nil
+        end
+    end
+end
+
+function Module.Function:RestoreArmor()
+    local Cache = Module.Stored.Armor
+
+    for Vehicle, Values in pairs(Cache) do
+        for ValueObject, Original in pairs(Values) do
+            if ValueObject and ValueObject.Parent then
+                ValueObject.Value = Original
+            end
+        end
+        Cache[Vehicle] = nil
+    end
+end
+
+function Module.Function:Render()
     if not LocalPlayer then return end
 
     local Character = LocalPlayer.Character
     local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 
     if Library.Flags["Render Vehicles"] then
+        local Viewport = Camera.ViewportSize
+        local CenterX = Viewport.X * 0.5
+        local CenterY = Viewport.Y * 0.5
+        local Half = 500 * 0.5
+
         for _, Data in pairs(Module.Stored.Vehicles) do
             local Vehicle = Data.Vehicle
             local PrimaryPart = Data.PrimaryPart
 
-            if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent) then continue end
+            if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then continue end
 
             if is_team_check_active() then
-                local Team = GetVehicleTeam(Vehicle)
+                local Team = self:GetVehicleTeam(Vehicle)
                 if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
                     continue
                 end
             end
 
-            local Screen, OnScreen = Camera:WorldToScreenPoint(PrimaryPart.Position)
+            local Position = PrimaryPart.CFrame.Position
 
-            if OnScreen then
-                local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
-                local Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - PrimaryPart.Position) / 2.78125)
+            local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
+            if not OnScreen then continue end
 
-                local NameWidth = Name and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Name).X or 0
-                local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Distance).X or 0
-                local Padding = Name and Distance and 4 or 0
+            local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
+            local Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart
+                and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125)
 
-                local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
-                local Y = Screen.Y
+            local NameWidth = Name and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Name).X or 0
+            local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Distance).X or 0
+            local Padding = Name and Distance and 4 or 0
 
-                if Name then
-                    local NameColor = (Library.Flags["Use Occupied Color"] and Vehicle:GetAttribute("Occupied") == "true") and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
-                    DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 12, NameColor.Color, NameColor.Alpha, Name, true, "Proxyma_Condensed")
-                    X = X + NameWidth + Padding
-                end
+            local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
+            local Y = Screen.Y
 
-                if Distance then
-                    local DistanceColor = (Library.Flags["Use Occupied Color"] and Vehicle:GetAttribute("Occupied") == "true") and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
-                    DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 12, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Proxyma_Condensed")
-                end
+            if Name then
+                local NameColor = (Library.Flags["Use Occupied Color"] and Vehicle:GetAttribute("Occupied") == "true") and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
+                DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 12, NameColor.Color, NameColor.Alpha, Name, true, "Proxyma_Condensed")
+                X = X + NameWidth + Padding
+            end
+
+            if Distance then
+                local DistanceColor = (Library.Flags["Use Occupied Color"] and Vehicle:GetAttribute("Occupied") == "true") and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
+                DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 12, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Proxyma_Condensed")
             end
 
             local Groups = Data.Groups
             if not (Library.Flags["Render Modules"] and Groups) then continue end
+            if math.abs(Screen.X - CenterX) > Half or math.abs(Screen.Y - CenterY) > Half then continue end
 
             for _, Group in ipairs(Groups) do
                 local GroupType = Group.Type
@@ -381,20 +457,20 @@ local function Render()
                 local PointCount = 0
                 for _, Part in ipairs(Group.Parts) do
                     if Part and Part.Parent then
-                        PointCount = ProjectPartCorners(Part, PointCount)
+                        PointCount = self:ProjectPartCorners(Part, PointCount)
                     end
                 end
 
                 if PointCount == 0 then continue end
-                Convex.Static.HWMPoints = TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
+                Convex.Static.HWMPoints = self:TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
 
-                local Size = CalculateConvexHull(Convex.Scratch.Points, PointCount, Convex.Scratch.Hull)
+                local Size = self:CalculateConvexHull(Convex.Scratch.Points, PointCount, Convex.Scratch.Hull)
                 if Size == 0 then continue end
 
-                Convex.Static.HWMHull = TruncateBuffer(Convex.Scratch.Hull, Size, Convex.Static.HWMHull)
+                Convex.Static.HWMHull = self:TruncateBuffer(Convex.Scratch.Hull, Size, Convex.Static.HWMHull)
 
-                DrawPolygon(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha)
-                DrawOutline(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha, 1)
+                self:DrawPolygon(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha)
+                self:DrawOutline(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha, 1)
             end
         end
     end
@@ -407,19 +483,21 @@ local function Render()
             if is_team_check_active() then
                 local Team
                 if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
-                    Team = GetPlayerTeam(Data.OwnerTag.Value)
+                    Team = self:GetPlayerTeam(Data.OwnerTag.Value)
                 end
                 if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
                     continue
                 end
             end
 
-            local Screen, OnScreen = Camera:WorldToScreenPoint(Part.Position)
+            local Position = Part.CFrame.Position
+
+            local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
             if not OnScreen then continue end
 
             local DroneText = "Drone"
             if HumanoidRootPart then
-                local Distance = vector.magnitude(HumanoidRootPart.Position - Part.Position) / 2.78125
+                local Distance = vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125
                 DroneText = string.format("Drone [%.0f]", Distance)
             end
 
@@ -431,11 +509,23 @@ end
 task.spawn(function()
     while true do
         task.wait(0.5)
-        VehicleCache()
-        DroneCache()
+        Module.Function:VehicleCache()
+        Module.Function:DroneCache()
+    end
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(5)
+        if Library.Flags["Disable Armor"] then
+            Module.Function:ScanArmor()
+        end
     end
 end)
 
 -- // Initalize \\ --
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
-RunService.Render:Connect(Render)
+
+RunService.Render:Connect(function()
+    Module.Function:Render()
+end)
