@@ -70,8 +70,8 @@ local Module = {
     }
 }
 
-local Library = loadfile("Source.lua")()
-local Offsets = loadfile("Offsets.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
 
 -- // Interface \\ --
 
