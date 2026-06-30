@@ -401,7 +401,7 @@ function Module.Function:Render()
         local Viewport = Camera.ViewportSize
         local CenterX = Viewport.X * 0.5
         local CenterY = Viewport.Y * 0.5
-        local Half = Library.Flags["Field of View"] * 0.5
+        local Half = Library.Flags["Field of View"].Value * 0.5
 
         for _, Data in pairs(Module.Stored.Vehicles) do
             local Vehicle = Data.Vehicle
