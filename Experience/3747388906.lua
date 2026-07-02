@@ -1,7 +1,11 @@
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
 local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
 local Module = {
     Function = {},
@@ -67,11 +71,13 @@ local Module = {
     Stored = {
         Game = {},
         Base = {}
-    }
+    },
+
+    Armor = {"Armor_59","Armor_60","Armor_63", "Armor_111","Armor_112","Armor_113","Armor_114","Armor_115", "Armor_116","Armor_117","Armor_118","Armor_119","Armor_120", "Armor_121","Armor_122","Armor_123","Armor_124","Armor_125", "Armor_141","Armor_142","Armor_143","Armor_145","Armor_146", "Armor_147","Armor_148","Armor_149","Armor_150","Armor_152", "Armor_153","Armor_154","Armor_155","Armor_156","Armor_157", "Armor_158","Armor_159","Armor_222","Armor_223","Armor_271", "Armor_272","Armor_298","Armor_308","Armor_309"}
 }
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+local Library = loadfile("Source.lua")()
+local Offsets = loadfile("Offsets.lua")()
 
 -- // Interface \\ --
 
@@ -81,6 +87,7 @@ local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 local Static, Entities = VisualsTab:MultiSection({ Sections = { "Static", "Entities" }, Side = 1 })
 local Miscellaneous, Loot, Bases = VisualsTab:MultiSection({ Sections = { "Other", "Loot", "Bases" }, Side = 2 })
 local Events = VisualsTab:Section({Name = "Events", Side = 2})
+local PlayersSection = VisualsTab:Section({Name = "Players", Side = 1})
 
 -- // Entities Section \\ --
 
@@ -171,6 +178,10 @@ Events:Separator()
 Events:Toggle({Name = "Render Timed", Flag = "Render Timed", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Timed", Flag = "Timed Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
 Events:Toggle({Name = "Show Remaining Time", Flag = "Show Remaining Time", Default = false, Callback = function(Value) end})
 Events:Slider({Name = "Maximum Render", Flag = "Timed Render", Min = 0, Max = 1300, Default = 1000, Callback = function(Value) end})
+
+-- // Players Section \\ --
+
+PlayersSection:Toggle({Name = "Render Player Armor", Flag = "Armor Viewer", Default = false, Callback = function(Value) end})
 
 -- // Function \\ --
 
@@ -265,6 +276,111 @@ function Module.Function:Hull(Part)
     end
 
     return Hull
+end
+
+local Size = 45
+
+function Module.Function:ImagePath(Image)
+    return "Goop/3747388906/Images" .. "/" .. Image .. ".png"
+end
+
+function Module.Function:MakeFolder()
+    if not isfolder("Goop/3747388906/Images") then makefolder("Goop/3747388906/Images") end
+end
+
+function Module.Function:ValidPNG(Data)
+    return type(Data) == "string" and #Data > 8 and Data:sub(1, 8) == string.char(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+end
+
+function Module.Function:Download(ID)
+    local I, Data = pcall(function()
+        return game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Images/" .. ID .. ".png")
+    end)
+    if I and Module.Function:ValidPNG(Data) then
+        pcall(writefile, Module.Function:ImagePath(ID), Data)
+        return true
+    end
+    return false
+end
+
+function Module.Function:Initialize()
+    Module.Function:MakeFolder()
+
+    local Good, Repaired, Failed = 0, 0, 0
+
+    for _, ID in Module.Armor do
+        local Path = Module.Function:ImagePath(ID)
+        local Valid = false
+
+        if isfile(Path) then
+            local I, Data = pcall(readfile, Path)
+            Valid = I and Module.Function:ValidPNG(Data)
+        end
+
+        if Valid then
+            Good += 1
+        else
+            if Module.Function:Download(ID) then
+                Repaired += 1
+            else
+                Failed += 1
+            end
+        end
+    end
+
+    print(("images ready: %d ok, %d downloaded/repaired, %d failed"):format(Good, Repaired, Failed))
+end
+
+Module.Function:Initialize()
+
+local ActiveImages = {}
+local CurrentTarget = nil
+local CurrentSignature = nil
+
+function Module.Function:ClearImages()
+    for _, Image in ipairs(ActiveImages) do
+        Image:Remove()
+    end
+    ActiveImages = {}
+end
+
+function Module.Function:GetArmor(Character)
+    local Armor, Seen = {}, {}
+    for _, Piece in ipairs(Character:GetChildren()) do
+        if Piece:IsA("Model") then
+            local Matched = Piece.Name:match("^(Armor_%d+)")
+            if Matched and not Seen[Matched] then
+                Seen[Matched] = true
+                table.insert(Armor, Matched)
+            end
+        end
+    end
+    return Armor
+end
+
+function Module.Function:GetClosest()
+    local Mouse = UserInputService:GetMouseLocation()
+    local Closest, ClosestDistance = nil, math.huge
+
+    for _, Player in Players:GetChildren() do
+        if Player ~= LocalPlayer then
+            local Character = Player.Character
+            local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+            if HumanoidRootPart then
+                local Screen, OnScreen = Camera:WorldToScreenPoint(HumanoidRootPart.Position)
+                if OnScreen then
+                    local DeltaX = Screen.X - Mouse.X
+                    local DeltaY = Screen.Y - Mouse.Y
+                    local Distance = DeltaX * DeltaX + DeltaY * DeltaY
+                    if Distance < ClosestDistance then
+                        ClosestDistance = Distance
+                        Closest = Player
+                    end
+                end
+            end
+        end
+    end
+    return Closest
 end
 
 function Module.Function.Cache()
@@ -525,6 +641,59 @@ function Module.Function.Cache()
 end
 
 function Module.Function.Render()
+    if Library.Flags["Armor Viewer"] then
+        local Target = Module.Function:GetClosest()
+
+        if not Target then
+            if CurrentTarget then
+                Module.Function:ClearImages()
+                CurrentTarget, CurrentSignature = nil, nil
+            end
+            return
+        end
+
+        local Armor = Module.Function:GetArmor(Target.Character)
+        local Signature = table.concat(Armor, "|")
+
+        if Target == CurrentTarget and Signature == CurrentSignature then
+            return
+        end
+
+        CurrentTarget, CurrentSignature = Target, Signature
+        Module.Function:ClearImages()
+
+        local Count = math.min(#Armor, 7)
+        local Spacing = 10
+
+        local TotalWidth = (Count * Size) + ((Count - 1) * Spacing)
+        local StartX = (Camera.ViewportSize.X - TotalWidth) / 2
+
+        local BottomPadding = 180
+        local CenterY = Camera.ViewportSize.Y - Size - BottomPadding
+
+        for i = 1, Count do
+            local ID = Armor[i]
+
+            if isfile(Module.Function:ImagePath(ID)) then
+                local Image = Drawing.new("Image")
+
+                Image.Size = Vector2.new(Size, Size)
+                Image.Color = Color3.fromRGB(255, 255, 255)
+                Image.Opacity = 1
+                Image.ZIndex = 5
+                Image.Visible = true
+
+                Image.Position = Vector2.new(
+                    StartX + (i - 1) * (Size + Spacing),
+                    CenterY
+                )
+
+                Image.Data = readfile(Module.Function:ImagePath(ID))
+                table.insert(ActiveImages, Image)
+            end
+        end
+    end
+
     for _, Entry in Module.Stored.Game do
         if Library.Flags["Render ".. Entry.Class] then
             if Entry.Model and Entry.Object and Module.Function:Filter(Entry.Class, Entry.Name) then
