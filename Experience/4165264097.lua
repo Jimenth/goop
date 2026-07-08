@@ -49,10 +49,17 @@ GameSection:Toggle({Name = "Initialize Entities", Flag = "Initialize Entities", 
 
 function Module.Function.Cache()
     local Stored = Module.Stored.Objects
+    local Entities = Module.Stored.Entities
 
     for Identifier, Entry in Stored do
         if not Entry or not Entry.Parent then
             Stored[Identifier] = nil
+        end
+    end
+
+    for Identifier, Entry in Entities do
+        if not Entry or not Entry.Parent or not Entry:FindFirstChild("HumanoidRootPart") then
+            Entities[Identifier] = nil
         end
     end
 
@@ -140,11 +147,11 @@ function Module.Function:GetBodyData(Character)
     return {
 		Head = Character:FindFirstChild("Head"),
 		
-		LeftLeg = Character:FindFirstChild("Left Leg"),
-		RightLeg = Character:FindFirstChild("Right Leg"),
-		LeftArm = Character:FindFirstChild("Left Arm"),
-		RightArm = Character:FindFirstChild("Right Arm"),
-		Torso = Character:FindFirstChild("Torso"),
+		LeftLeg = Character:FindFirstChild("Left Leg") or Character:FindFirstChild("HumanoidRootPart"),
+		RightLeg = Character:FindFirstChild("Right Leg") or Character:FindFirstChild("HumanoidRootPart"),
+		LeftArm = Character:FindFirstChild("Left Arm") or Character:FindFirstChild("HumanoidRootPart"),
+		RightArm = Character:FindFirstChild("Right Arm") or Character:FindFirstChild("HumanoidRootPart"),
+		Torso = Character:FindFirstChild("Torso") or Character:FindFirstChild("HumanoidRootPart"),
 		
 		HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart"),
 	}
@@ -182,7 +189,7 @@ function Module.Function:EntityData(Entity, Parts)
         Aimbot_TP_Part = Parts.Head,
         Triggerbot_Part = Parts.Head,
         Health = Health,
-        MaxHealth = Humanoid and Humanoid.MaxHealth or 0,
+        MaxHealth = Humanoid and MaxHealth or 0,
         body_parts_data = {
             { name = "LowerTorso", part = Parts.Torso },
             { name = "LeftUpperLeg", part = Parts.LeftLeg },
@@ -217,9 +224,8 @@ function Module.Function:EntityData(Entity, Parts)
     return tostring(Entity), Data
 end
 
-function Module.Function.PreModel()
+function Module.Function.PostLocal()
     if Library.Flags["Initialize Entities"] then
-        State = true
         local Seen = {}
 
         for _, Entity in Module.Stored.Entities do
@@ -232,13 +238,11 @@ function Module.Function.PreModel()
                     continue
                 end
 
-                if Parts.Head and Parts.HumanoidRootPart then
+                if Parts and Parts.Head and Parts.HumanoidRootPart then
                     if not Module.Added[Key] then
-                        local Success, ID, Data = pcall(function()
-                            return Module.Function:EntityData(Entity, Parts)
-                        end)
+                        local ID, Data = Module.Function:EntityData(Entity, Parts)
 
-                        if Success and ID and Data then
+                        if ID and Data then
                             add_model_data(Data, ID)
                             Module.Added[ID] = Entity
                         end
@@ -258,9 +262,6 @@ function Module.Function.PreModel()
                 Module.Added[Key] = nil
             end
         end
-    elseif not Library.Flags["Initialize Entities"] and State then
-        clear_model_data()
-        State = false
     end
 end
 
@@ -285,5 +286,5 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
-RunService.PreModel:Connect(Module.Function.PreModel)
+RunService.PostLocal:Connect(Module.Function.PostLocal)
 RunService.Render:Connect(Module.Function.Render)
