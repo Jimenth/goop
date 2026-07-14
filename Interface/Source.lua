@@ -37,7 +37,10 @@ local Library do
             ["White"] = FromRGB(255, 255, 255),
         },
 
-        Font = "Pixel", -- Jersey, Interum, Pixel, Proggy
+        Fonts = {
+            ["UI"] = 0, ["System"] = 1, ["SourceSans"] = 4,
+        },
+        Font = "SourceSans", -- UI, System, SourceSans
         FontSize = 13,
 
         Layout = {
@@ -136,21 +139,131 @@ local Library do
         end
     end
 
+    -- // Static Drawing Core \\ --
+    -- The interface is still described every frame in immediate style, but the shapes
+    -- it needs are backed by a reusable pool of retained (Drawing.new) objects.
+    --   * NewDrawing    creates an object exactly once and seeds its properties.
+    --   * UpdateDrawing  writes only the properties that actually changed (tracked per
+    --                    object), so a steady frame issues pure updates - never a
+    --                    reallocation or a redundant redraw of an unchanged object.
+
+    local Vector3New = Vector3.new
+    local OutlineColor = Vector3New(0, 0, 0)
+
+    -- Weak keys: a drawing that is Remove()'d and dropped falls out of the cache.
+    local PropCache = setmetatable({ }, { __mode = "k" })
+
+    local function NewDrawing(Type, Properties)
+        local Object = Drawing.new(Type)
+        local Cache = { }
+        PropCache[Object] = Cache
+        if Properties then
+            for Key, Value in Properties do
+                Object[Key] = Value
+                Cache[Key] = Value
+            end
+        end
+        return Object
+    end
+
+    local function UpdateDrawing(Object, Properties)
+        local Cache = PropCache[Object]
+        if not Cache then
+            Cache = { }
+            PropCache[Object] = Cache
+        end
+        for Key, Value in Properties do
+            if Cache[Key] ~= Value then
+                Object[Key] = Value
+                Cache[Key] = Value
+            end
+        end
+    end
+
+    -- Per-frame object pool. Squares and Text are pooled separately but share one
+    -- draw-order counter mapped onto ZIndex, so retained objects stack in the exact
+    -- order their draw call was issued (reproducing immediate-mode painter order).
+    local Pool = {
+        Squares = { }, SquareCount = 0,
+        Texts = { }, TextCount = 0,
+        Order = 0,
+    }
+
+    function Pool:Begin()
+        self.SquareCount = 0
+        self.TextCount = 0
+        self.Order = 0
+    end
+
+    -- Objects left unclaimed this frame are hidden (not removed) so the next frame
+    -- can reclaim them with a cheap update instead of a reallocation.
+    function Pool:Finish()
+        for Index = self.SquareCount + 1, #self.Squares do
+            UpdateDrawing(self.Squares[Index], { Visible = false })
+        end
+        for Index = self.TextCount + 1, #self.Texts do
+            UpdateDrawing(self.Texts[Index], { Visible = false })
+        end
+    end
+
     -- // Draw Helpers \\ --
 
     local function DrawRect(X, Y, W, H, Color, Opacity)
-        DrawingImmediate.FilledRectangle(Vector2New(X, Y), Vector2New(W, H), Color, Opacity or 1)
+        Pool.Order = Pool.Order + 1
+        local Index = Pool.SquareCount + 1
+        Pool.SquareCount = Index
+
+        local Square = Pool.Squares[Index]
+        if not Square then
+            Square = NewDrawing("Square", { Filled = true, Thickness = 1 })
+            Pool.Squares[Index] = Square
+        end
+
+        UpdateDrawing(Square, {
+            Visible = true,
+            Position = Vector2New(X, Y),
+            Size = Vector2New(W, H),
+            Color = Color,
+            Opacity = Opacity or 1,
+            ZIndex = Pool.Order,
+        })
     end
 
     local function DrawText(X, Y, Size, Color, Text, Opacity, Center)
-        DrawingImmediate.OutlinedText(Vector2New(X, Y), Size, Color, Opacity or 1, Text, Center or false, Library.Font)
+        Pool.Order = Pool.Order + 1
+        local Index = Pool.TextCount + 1
+        Pool.TextCount = Index
+
+        local Object = Pool.Texts[Index]
+        if not Object then
+            Object = NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor })
+            Pool.Texts[Index] = Object
+        end
+
+        UpdateDrawing(Object, {
+            Visible = true,
+            Position = Vector2New(X, Y),
+            Size = Size,
+            Color = Color,
+            Text = Text,
+            Center = Center or false,
+            Opacity = Opacity or 1,
+            Font = Library.Fonts[Library.Font] or 0,
+            ZIndex = Pool.Order,
+        })
     end
+
+    local MeasureText = NewDrawing("Text", { Visible = false })
 
     local function GetTextBounds(Text, Size)
-        return DrawingImmediate.GetTextBounds(Library.Font, Size or Library.FontSize, Text)
+        UpdateDrawing(MeasureText, {
+            Text = tostring(Text),
+            Size = Size or Library.FontSize,
+            Font = Library.Fonts[Library.Font] or 0,
+        })
+        return MeasureText.TextBounds
     end
 
-    -- (outer outline - border - fill).
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
         DrawRect(X, Y, W, H, Outer)
         DrawRect(X + 1, Y + 1, W - 2, H - 2, Border)
@@ -256,8 +369,6 @@ local Library do
     end
 
     -- // Attached Pickers \\ --
-    -- Swatch / keybind badges live to the right of a Toggle, Label or Section
-    -- header. SwatchWidth/Gap drive the slot math.
 
     local SW = Library.Layout.SwatchWidth
     local SG = Library.Layout.SwatchGap
@@ -268,9 +379,6 @@ local Library do
 
     local NewColorPicker, NewKeyPicker
 
-    -- Renders the swatch/badge row for any host exposing AttachedColorPickers and
-    -- AttachedKeyPicker. AnchorX is the edge to align against. When LeftAlign is
-    -- true badges grow rightward from AnchorX, otherwise leftward.
     local function RenderAttachedPickers(Host, AnchorX, BadgeY, LeftAlign)
         local function SlotX(Index)
             if LeftAlign then
@@ -1008,7 +1116,7 @@ local Library do
     end
 
     -- A fixed-height section whose content scrolls behind a draggable thumb.
-    -- DrawingImmediate has no clip region, so elements that don't fully fit in
+    -- Retained drawings have no clip region, so elements that don't fully fit in
     -- the view are culled (whole-element, never partially drawn).
     function Pages:ScrollableSection(Data)
         Data = Data or { }
@@ -1962,12 +2070,14 @@ local Library do
             DrawRect(AlphaX + AX, AlphaY + AlphaBarH / 2, ChunkW, AlphaBarH / 2, Dark and FromRGB(160, 160, 160) or FromRGB(100, 100, 100))
         end
 
-        local Steps = 24
+        -- Gapless, non-overlapping tiles (each edge snaps to the next tile's start) so
+        -- the semi-transparent steps don't double-blend into vertical seams.
+        local Steps = 48
+        local AlphaColor = FromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3])
         for Step = 0, Steps - 1 do
-            local A = Step / Steps
-            local StepX = AlphaX + MathFloor(Step / Steps * AlphaW)
-            local StepW = MathFloor(AlphaW / Steps) + 1
-            DrawRect(StepX, AlphaY, StepW, AlphaBarH, FromRGB(Picker.Color[1], Picker.Color[2], Picker.Color[3]), A)
+            local StepX = AlphaX + MathFloor(Step * AlphaW / Steps)
+            local NextX = AlphaX + MathFloor((Step + 1) * AlphaW / Steps)
+            DrawRect(StepX, AlphaY, NextX - StepX, AlphaBarH, AlphaColor, (Step + 0.5) / Steps)
         end
 
         DrawRect(AlphaX - 1, AlphaY - 1, AlphaW + 2, 1, Theme["Black"])
@@ -2317,7 +2427,7 @@ local Library do
 
         StyleSection:Dropdown({
             Name = "Font Selector",
-            Options = { "Jersey", "Interum", "Pixel", "Proggy" },
+            Options = { "UI", "System", "SourceSans" },
             Default = 3,
             Flag = "UI_Font",
             Callback = function(Selection)
@@ -2557,8 +2667,8 @@ local Library do
 
         local Text = WM.Name .. "  |  " .. MathFloor(get_overlay_fps()) .. " FPS"
         local Bounds = GetTextBounds(Text)
-        local Width = Bounds.X + 16
-        local Height = 22
+        local Width = MathCeil(Bounds.X) + 20
+        local Height = MathMax(22, MathCeil(Bounds.Y) + 10)
 
         if self.Input.MouseClicked and not self.Input.Consumed and self:IsHovering(WM.X, WM.Y, Width, Height) then
             WM.Dragging = true
@@ -2575,7 +2685,7 @@ local Library do
         local X, Y = WM.X, WM.Y
         DrawBox(X, Y, Width, Height, Theme["Black"], Theme["Border"], Theme["Background"])
         DrawRect(X + 2, Y + 2, Width - 4, 2, Theme["Accent"])
-        DrawText(X + 8, Y + 6, Library.FontSize, Theme["White"], Text)
+        DrawText(X + 10, Y + MathFloor((Height - Bounds.Y) / 2) + 1, Library.FontSize, Theme["White"], Text)
     end
 
     -- // Group Ranked Players \\ --
@@ -2725,13 +2835,15 @@ local Library do
     Library.MasterPrevState = false
     Library.MasterSavedStates = { }
 
-    RunService.Render:Connect(function()
+    local RenderConnection = RunService.Render:Connect(function()
         Library:UpdateInput()
         Library.Input.Consumed = false
         Library.DropdownOverlay = nil
 
         local MainWin = Library.Windows[1]
         if not MainWin then return end
+
+        Pool:Begin()
 
         local MenuKey = MainWin.MenuToggleKey or "RightShift"
         local PressedKeys = getpressedkeys() or { }
@@ -2800,7 +2912,20 @@ local Library do
                 Window:Render()
             end
         end
+
+        Pool:Finish()
     end)
+
+    function Library:Unload()
+        if RenderConnection then
+            RenderConnection:Disconnect()
+            RenderConnection = nil
+        end
+        for _, Square in Pool.Squares do Square:Remove() end
+        for _, Object in Pool.Texts do Object:Remove() end
+        Pool.Squares, Pool.SquareCount = { }, 0
+        Pool.Texts, Pool.TextCount = { }, 0
+    end
 end
 
 return Library
