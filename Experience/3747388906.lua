@@ -76,8 +76,8 @@ local Module = {
     Armor = {"Armor_59","Armor_60","Armor_63", "Armor_111","Armor_112","Armor_113","Armor_114","Armor_115", "Armor_116","Armor_117","Armor_118","Armor_119","Armor_120", "Armor_121","Armor_122","Armor_123","Armor_124","Armor_125", "Armor_141","Armor_142","Armor_143","Armor_145","Armor_146", "Armor_147","Armor_148","Armor_149","Armor_150","Armor_152", "Armor_153","Armor_154","Armor_155","Armor_156","Armor_157", "Armor_158","Armor_159","Armor_222","Armor_223","Armor_271", "Armor_272","Armor_298","Armor_308","Armor_309"}
 }
 
-local Library = loadfile("Source.lua")()
-local Offsets = loadfile("Offsets.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
 
 -- // Interface \\ --
 
