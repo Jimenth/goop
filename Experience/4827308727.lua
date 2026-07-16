@@ -1840,6 +1840,10 @@ ModSection:Button({ Name = "Remove Spread", Callback = function() gc.setgc({spre
 
 -- // Loot Section \\ --
 
+LootSection:Button({Name = "Instant Loot", Callback = function() gc.setgc({search_speed = 999, searchSpeed = 999, earchSpeed = 999, searchTime = 0, SearchTime = 0, searchDuration = 0, lootSearchTime = 0, containerSearchTime = 0}) end})
+
+LootSection:Separator()
+
 LootSection:Toggle({Name = "Render Crates", Flag = "Render Crate", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Crate", Flag = "Crate Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 LootSection:Slider({Name = "Maximum Render", Flag = "Crate Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
 
