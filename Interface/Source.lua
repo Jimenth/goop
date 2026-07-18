@@ -43,6 +43,8 @@ local Library do
         Font = "SourceSans", -- UI, System, SourceSans
         FontSize = 13,
 
+        DPIScale = _G.DPIScale or 1,
+
         Layout = {
             SectionPadding = 7,
             SectionGap = 6,
@@ -77,7 +79,7 @@ local Library do
     }
 
     Library.Camera = Camera
-    Library.Viewport = Camera.ViewportSize
+    Library.Viewport = Camera.ViewportSize * Library.DPIScale
 
     local Theme = Library.Theme
 
@@ -139,18 +141,10 @@ local Library do
         end
     end
 
-    -- // Static Drawing Core \\ --
-    -- The interface is still described every frame in immediate style, but the shapes
-    -- it needs are backed by a reusable pool of retained (Drawing.new) objects.
-    --   * NewDrawing    creates an object exactly once and seeds its properties.
-    --   * UpdateDrawing  writes only the properties that actually changed (tracked per
-    --                    object), so a steady frame issues pure updates - never a
-    --                    reallocation or a redundant redraw of an unchanged object.
-
+    -- // Core \\ --
     local Vector3New = Vector3.new
     local OutlineColor = Vector3New(0, 0, 0)
 
-    -- Weak keys: a drawing that is Remove()'d and dropped falls out of the cache.
     local PropCache = setmetatable({ }, { __mode = "k" })
 
     local function NewDrawing(Type, Properties)
@@ -180,9 +174,6 @@ local Library do
         end
     end
 
-    -- Per-frame object pool. Squares and Text are pooled separately but share one
-    -- draw-order counter mapped onto ZIndex, so retained objects stack in the exact
-    -- order their draw call was issued (reproducing immediate-mode painter order).
     local Pool = {
         Squares = { }, SquareCount = 0,
         Texts = { }, TextCount = 0,
@@ -195,8 +186,6 @@ local Library do
         self.Order = 0
     end
 
-    -- Objects left unclaimed this frame are hidden (not removed) so the next frame
-    -- can reclaim them with a cheap update instead of a reallocation.
     function Pool:Finish()
         for Index = self.SquareCount + 1, #self.Squares do
             UpdateDrawing(self.Squares[Index], { Visible = false })
@@ -352,9 +341,12 @@ local Library do
 
     function Library:UpdateInput()
         local Input = self.Input
+
+        self.Viewport = self.Camera.ViewportSize * self.DPIScale
+
         Input.Mouse = UserInputService:GetMouseLocation()
-        Input.MouseX = Input.Mouse.X
-        Input.MouseY = Input.Mouse.Y
+        Input.MouseX = Input.Mouse.X * self.DPIScale
+        Input.MouseY = Input.Mouse.Y * self.DPIScale
         Input.MouseClicked = isleftpressed() and not Input.MousePrevious
         Input.RightClicked = isrightpressed() and not Input.RightPrevious
         Input.MouseDown = isleftpressed()
@@ -481,9 +473,6 @@ local Library do
     end
 
     -- // KeyPicker Element \\ --
-    -- A KeyPicker never draws its own row; its badge is drawn by the host through
-    -- RenderAttachedPickers. The factory only owns state + flag sync, and registers
-    -- itself for the per-frame key polling done in Library:Window.
 
     function NewKeyPicker(Section, Data)
         Data = Data or { }
