@@ -1,24 +1,23 @@
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
-local Players = game:GetService("Players")
 
-local LocalPlayer = Players.LocalPlayer
-
-local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 local Module = {
     Function = {},
+    Added = {},
 
     Game = {
-        Animals = Workspace:FindFirstChild("Animals")
+        Animals = Workspace:FindFirstChild("Animals"),
+        DeadAnimals = Workspace:FindFirstChild("DeadAnimals"),
     },
     
     Stored = {
         Entities = {},
+        Dead = {}
     }
 }
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+local Library = loadfile("Source.lua")()
 
 -- // Interface \\ --
 
@@ -27,15 +26,12 @@ local Window = Library:Window({Name = "Goop | Hunting Season", Size = Vector2.ne
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 1})
 local AnimalsSection = VisualsTab:Section({Name = "Animals", Side = 1})
 
-AnimalsSection:Toggle({Name = "Render Names", Flag = "Render Names", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+AnimalsSection:Toggle({Name = "Initialize Entities", Flag = "Initialize Entities", Default = false, Callback = function(Value) end})
 AnimalsSection:Toggle({Name = "Display Gender", Flag = "Display Gender", Default = false, Callback = function(Value) end})
-AnimalsSection:Toggle({Name = "Render Boxes", Flag = "Render Boxes", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Box", Flag = "Box Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
-
---
 
 AnimalsSection:Separator()
-AnimalsSection:Toggle({Name = "Use Maximum Render", Flag = "Use Maximum Render", Default = false, Callback = function(Value) end})
-AnimalsSection:Slider({Name = "Maximum Render", Flag = "Maximum Render", Min = 0, Max = 1500, Default = 400, Callback = function(Value) end})
+
+AnimalsSection:Toggle({Name = "Render Dead", Flag = "Render Dead", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 
 -- // Functions \\ --
 
@@ -55,14 +51,21 @@ end
 
 function Module.Function.Cache()
     local Stored = Module.Stored.Entities
+    local Dead = Module.Stored.Dead
 
     for Identifier, Entry in Stored do
-        if not Entry or not Entry.Parent then
+        if not Entry or not Entry.Parent or not Library.Flags["Initialize Entities"] then
             Stored[Identifier] = nil
         end
     end
 
-    if Library.Flags["Render Names"] or Library.Flags["Render Boxes"] then
+    for Identifier, Entry in Dead do
+        if not Entry or not Entry.Parent or not Library.Flags["Render Dead"] then
+            Dead[Identifier] = nil
+        end
+    end
+
+    if Library.Flags["Initialize Entities"] then
         for _, Animal in Module.Game.Animals:GetChildren() do
             local Identifier = tostring(Animal)
 
@@ -71,49 +74,158 @@ function Module.Function.Cache()
             end
         end
     end
+
+    if Library.Flags["Render Dead"] then
+        for _, Animal in Module.Game.DeadAnimals:GetChildren() do
+            local Identifier = tostring(Animal)
+
+            if not Dead[Identifier] then
+                Dead[Identifier] = Animal
+            end
+        end
+    end
+end
+
+function Module.Function:GetBodyData(Animal)
+    if not Animal then return nil end
+
+    local Organs = Animal:FindFirstChild("Organs")
+    if not Organs then return nil end
+
+    return {
+		Head = Organs:FindFirstChild("Brain"),
+		
+		LeftLeg = Animal:FindFirstChildOfClass("MeshPart") or Animal:FindFirstChild("RootPart"),
+		RightLeg = Animal:FindFirstChildOfClass("MeshPart") or Animal:FindFirstChild("RootPart"),
+		LeftArm = Animal:FindFirstChildOfClass("MeshPart") or Animal:FindFirstChild("RootPart"),
+		RightArm = Animal:FindFirstChildOfClass("MeshPart") or Animal:FindFirstChild("RootPart"),
+		Torso = Organs:FindFirstChild("Heart") or Animal:FindFirstChild("RootPart"),
+		
+		HumanoidRootPart = Animal:FindFirstChild("RootPart"),
+	}
+end
+
+function Module.Function:AnimalData(Animal, Parts)
+    if not Animal then return nil end
+
+    local Data = {
+        Username = tostring(Animal),
+        Displayname = Animal:GetAttribute("DisplayName"),
+        Userid = math.random(-999999, 999999),
+        Character = Animal,
+        PrimaryPart = Parts.HumanoidRootPart,
+        Humanoid = Parts.HumanoidRootPart,
+        Head = Parts.Head,
+        Torso = Parts.Torso,
+        LeftArm = Parts.LeftArm or Parts.HumanoidRootPart,
+        LeftLeg = Parts.LeftLeg or Parts.HumanoidRootPart,
+        RightArm = Parts.RightArm or Parts.HumanoidRootPart,
+        RightLeg = Parts.RightLeg or Parts.HumanoidRootPart,
+        BodyHeightScale = 1,
+        RigType = 0,
+        Teamname = "Animals",
+        Toolname = "Unknown",
+        Whitelisted = false,
+        Archenemies = false,
+        Aimbot_Part = Parts.Head,
+        Aimbot_TP_Part = Parts.Head,
+        Triggerbot_Part = Parts.Head,
+        Health = 100,
+        MaxHealth = 100,
+        body_parts_data = {
+            { name = "LowerTorso", part = Parts.Torso },
+            { name = "LeftUpperLeg", part = Parts.LeftLeg },
+            { name = "LeftLowerLeg", part = Parts.LeftLeg },
+            { name = "RightUpperLeg", part = Parts.RightLeg },
+            { name = "RightLowerLeg", part = Parts.RightLeg },
+            { name = "LeftUpperArm", part = Parts.LeftArm },
+            { name = "LeftLowerArm", part = Parts.LeftArm },
+            { name = "RightUpperArm", part = Parts.RightArm },
+            { name = "RightLowerArm", part = Parts.RightArm },
+        },
+        full_body_data = {
+            { name = "Head", part = Parts.Head },
+            { name = "UpperTorso", part = Parts.Torso },
+            { name = "LowerTorso", part = Parts.Torso },
+            { name = "HumanoidRootPart", part = Parts.HumanoidRootPart },
+            { name = "LeftUpperArm", part = Parts.LeftArm },
+            { name = "LeftLowerArm", part = Parts.LeftArm },
+            { name = "LeftHand", part = Parts.LeftArm },
+            { name = "RightUpperArm", part = Parts.RightArm },
+            { name = "RightLowerArm", part = Parts.RightArm },
+            { name = "RightHand", part = Parts.RightArm },
+            { name = "LeftUpperLeg", part = Parts.LeftLeg },
+            { name = "LeftLowerLeg", part = Parts.LeftLeg },
+            { name = "LeftFoot", part = Parts.LeftLeg },
+            { name = "RightUpperLeg", part = Parts.RightLeg },
+            { name = "RightLowerLeg", part = Parts.RightLeg },
+            { name = "RightFoot", part = Parts.RightLeg },
+        }
+    }
+
+    return tostring(Animal), Data
 end
 
 function Module.Function.Render()
-    for _, Animal in pairs(Module.Stored.Entities) do
+    if not Library.Flags["Render Dead"] then return end 
+
+    for _, Animal in pairs(Module.Stored.Dead) do
         if Animal and Animal:FindFirstChild("RootPart") then
-            if not LocalPlayer then continue end
+            local HumanoidRootPart = Animal:FindFirstChild("RootPart")
+            if Library.Flags["Render Dead"] then
+                local RealName
 
-            local Character = LocalPlayer.Character
-            if not Character then continue end
+                if Library.Flags["Display Gender"] then
+                    RealName = "Dead ".. Animal:GetAttribute("Sex").. " ".. Animal:GetAttribute("DisplayName")
+                else
+                    RealName = "Dead ".. Animal:GetAttribute("DisplayName")
+                end
+                local Screen, OnScreen = Camera:WorldToScreenPoint(HumanoidRootPart.Position)
 
-            local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-            if not HumanoidRootPart then continue end
+                if OnScreen then
+                    DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
+                end
+            end            
+        end
+    end
+end
 
-            if Library.Flags["Use Maximum Render"] and vector.magnitude(Animal:FindFirstChild("RootPart").Position - HumanoidRootPart.Position) >= Library.Flags["Maximum Render"].Value then continue end
+function Module.Function.PostLocal()
+    local Seen = {}
 
-            local Parts, Count = Module.Function:GetEntityParts(Animal)
+    for _, Entity in Module.Stored.Entities do
+        local HumanoidRootPart = Entity:FindFirstChild("RootPart")
+        if HumanoidRootPart and Entity.Parent then
+            local Key = tostring(Entity)
+            local Parts = Module.Function:GetBodyData(Entity)
 
-            if Count > 0 then
-                local BoundingBox = Bounding.GetBoundingBox(Parts)
-                if BoundingBox then
-                    local TopY = BoundingBox.Position.Y
-                    local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
+            if not Parts or not Parts.Head or not Parts.HumanoidRootPart then
+                continue
+            end
 
-                    if Library.Flags["Render Boxes"] then
-                        local Thickness = 1
+            if Parts and Parts.Head and Parts.HumanoidRootPart then
+                if not Module.Added[Key] then
+                    local ID, Data = Module.Function:AnimalData(Entity, Parts)
 
-                        DrawingImmediate.Rectangle(Vector2.new(BoundingBox.Position.X - Thickness, BoundingBox.Position.Y - Thickness), Vector2.new(BoundingBox.Size.X + Thickness * 2, BoundingBox.Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        DrawingImmediate.Rectangle(Vector2.new(BoundingBox.Position.X + Thickness, BoundingBox.Position.Y + Thickness), Vector2.new(BoundingBox.Size.X - Thickness * 2, BoundingBox.Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        DrawingImmediate.Rectangle(BoundingBox.Position, BoundingBox.Size, Library.Flags["Box Color"].Color, Library.Flags["Box Color"].Alpha, 1)
+                    if ID and Data then
+                        add_model_data(Data, ID)
+                        Module.Added[ID] = Entity
                     end
-
-                    if Library.Flags["Render Names"] then
-                        local RealName
-
-                        if Library.Flags["Display Gender"] then
-                            RealName = Animal:GetAttribute("Sex").. " ".. Animal:GetAttribute("DisplayName")
-                        else
-                            RealName = Animal:GetAttribute("DisplayName")
-                        end
-                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
+                else
+                    if Library.Flags["Display Gender"] then
+                        edit_model_data({ Displayname = Entity:GetAttribute("Sex").. " ".. Entity:GetAttribute("DisplayName") }, Key)
                     end
                 end
+                Seen[Key] = true
             end
+        end
+    end
+
+    for Key, Model in pairs(Module.Added) do
+        local HumanoidRootPart = Model:FindFirstChild("RootPart")
+        if not HumanoidRootPart or not Seen[Key] then
+            remove_model_data(Key)
+            Module.Added[Key] = nil
         end
     end
 end
@@ -122,4 +234,5 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
+RunService.PostLocal:Connect(Module.Function.PostLocal)
 RunService.Render:Connect(Module.Function.Render)
