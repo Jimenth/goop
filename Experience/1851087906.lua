@@ -2,6 +2,8 @@
 
 local Workspace = game:GetService("Workspace")
 
+local Camera = workspace.CurrentCamera
+
 local Module = {
     Function = {},
     Added = {},
@@ -17,7 +19,7 @@ local Module = {
     }
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
