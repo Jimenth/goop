@@ -246,7 +246,7 @@ function Module.Function:GetVehicleTeam(Vehicle)
     local OwnerName = Vehicle:GetAttribute("Requester")
     if typeof(OwnerName) ~= "string" then return nil end
 
-    return self:GetPlayerTeam(OwnerName)
+    return Module.Function:GetPlayerTeam(OwnerName)
 end
 
 function Module.Function:VehicleCache()
@@ -525,7 +525,7 @@ function Module.Function.Render()
             if is_team_check_active() then
                 local Team
                 if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
-                    Team = self:GetPlayerTeam(Data.OwnerTag.Value)
+                    Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
                 end
                 if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
                     continue
