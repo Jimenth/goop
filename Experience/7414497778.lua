@@ -526,7 +526,6 @@ end)
 
 -- // Initalize \\ --
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
+Library:Watermark("Goop")
 
-RunService.Render:Connect(function()
-    Module.Function:Render()
-end)
+RunService.Render:Connect(Module.Function.Render)
