@@ -35,7 +35,7 @@ local Convex = {
     }
 }
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
