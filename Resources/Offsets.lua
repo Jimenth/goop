@@ -1,9 +1,11 @@
+local Version = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Version.lua"))()
+
 local success, response = pcall(function()
-    return game:HttpGet("https://offsets.imtheo.lol/Offsets.hpp")
+    return game:HttpGet("https://offsets.imtheo.lol/.." .. Version .. "../offsets.hpp")
 end)
 
 if not success then
-    send_notification("Failed to fetch: " .. tostring(response), "warning")
+    send_notification("Failed to fetch offsets: " .. tostring(response), "warning")
     return nil
 end
 
