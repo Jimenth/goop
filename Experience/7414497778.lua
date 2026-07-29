@@ -446,7 +446,7 @@ function Module.Function.Render()
             if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then continue end
 
             if is_team_check_active() then
-                local Team = self:GetVehicleTeam(Vehicle)
+                local Team = Module.Function:GetVehicleTeam(Vehicle)
                 if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
                     continue
                 end
