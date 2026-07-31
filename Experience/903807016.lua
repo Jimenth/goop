@@ -79,6 +79,7 @@ local Module = {
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 
 -- // Interface \\ --
 
@@ -89,6 +90,7 @@ local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 local Automation = MainTab:Section({Name = "Automation", Side = 1})
 local Robberies = VisualsTab:Section({Name = "Robberies", Side = 1})
 local Specific = VisualsTab:Section({Name = "Specific", Side = 2})
+local PlayersSection = VisualsTab:Section({Name = "Players", Side = 1})
 
 -- // Automation Section \\ --
 
@@ -112,6 +114,8 @@ Robberies:Separator()
 Robberies:Toggle({Name = "Render Stealable Vehicles", Flag = "Render Vehicle", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Vehicle", Flag = "Vehicle Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 Robberies:Slider({Name = "Maximum Render", Flag = "Vehicle Render", Min = 0, Max = 2000, Default = 400, Callback = function(Value) end})
 
+-- // Specific Section \\ --
+
 Specific:Toggle({Name = "Render Money", Flag = "Render Money", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Money", Flag = "Money Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 Specific:Slider({Name = "Maximum Render", Flag = "Money Render", Min = 0, Max = 2000, Default = 400, Callback = function(Value) end})
 
@@ -119,6 +123,10 @@ Specific:Separator()
 
 Specific:Toggle({Name = "Render Bank Code Locations", Flag = "Render Bank Code Location", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Bank Code Location", Flag = "Bank Code Location Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 Specific:Slider({Name = "Maximum Render", Flag = "Bank Code Location Render", Min = 0, Max = 100, Default = 50, Callback = function(Value) end})
+
+-- // Players Section \\ --
+
+PlayersSection:Toggle({Name = "Render Wanted", Flag = "Render Wanted", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Wanted", Flag = "Wanted Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 1, Callback = function(Color) end})
 
 -- // Function \\ --
 
@@ -912,6 +920,20 @@ function Module.Function:SolveVehicle()
     return true
 end
 
+function Module.Function:GetCharacterParts(Character)
+    local Parts = {}
+    local Count = 0
+    
+    for Index, Child in Character:GetChildren() do
+        if Child:IsA("Part") or Child:IsA("MeshPart") then
+            Count = Count + 1
+            Parts[Count] = Child
+        end
+    end
+    
+    return Parts, Count
+end
+
 function Module.Function.Render()
     for _, Entry in Module.Stored.Game do
         if Library.Flags["Render ".. Entry.Class] then
@@ -927,6 +949,28 @@ function Module.Function.Render()
 
                     if Visible then
                         DrawingImmediate.OutlinedText(Screen, 13, Library.Flags[Entry.Class.. " Color"].Color, Library.Flags[Entry.Class.. " Color"].Alpha, Text, true, "Pixel")
+                    end
+                end
+            end
+        end
+    end
+
+    if Library.Flags["Render Wanted"] then
+        for _, Player in Players:GetChildren() do
+            if not Player then continue end
+            if Player == LocalPlayer then continue end
+
+            if Player:FindFirstChild("Is_Wanted") then
+                local Character = Player.Character
+                local Parts, Count = Module.Function:GetCharacterParts(Character)
+
+                if Count > 0 then
+                    local BoundingBox = Bounding.GetBoundingBox(Parts)
+                    if BoundingBox then
+                        local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
+                        local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
+
+                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Library.Flags["Wanted Color"].Color, Library.Flags["Wanted Color"].Alpha, "WANTED", true, "Pixel")
                     end
                 end
             end
