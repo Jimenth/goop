@@ -34,7 +34,21 @@ Automation:Toggle({Name = "Auto Collect", Flag = "Auto Collect", Default = false
 Automation:Toggle({Name = "Auto Purchase", Flag = "Auto Purchase", Default = false, Callback = function(Value) end})
 Automation:Toggle({Name = "Auto Rebirth", Flag = "Auto Rebirth", Default = false, Callback = function(Value) end})
 
+Automation:Separator()
+
+Automation:Dropdown({Name = "Loadout Option", Flag = "Loadout Option", Options = {"1", "2", "3", "4"}, Default = 1, Multi = false, Callback = function(Value) end})
+
 -- // Function \\ --
+
+function Module.Function:GetText(Object)
+    local Text = memory.readstring(Object, Offsets.GuiObject.Text)
+    return Text
+end
+
+function Module.Function:GetVisible(Object)
+    local Visible = memory.readu8(Object, Offsets.GuiObject.Visible)
+    return Visible == 1
+end
 
 function Module.Function:GetCompletion()
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
@@ -53,7 +67,7 @@ function Module.Function:GetCompletion()
     local Progress = Completion:FindFirstChild("BarProgressAmount")
     if not Progress then return 0 end
 
-    local Percentage = tonumber(memory.readstring(Progress, Offsets.GuiObject.Text):match("%d+")) or 0
+    local Percentage = tonumber(Module.Function:GetText(Progress):match("%d+")) or 0
     return Percentage or 0
 end
 
@@ -68,7 +82,7 @@ function Module.Function:GetRebirthCost()
     local Label = LocalPlayer.PlayerGui.UI.Container.HUD.Menu.HUD.Rebirths.RebirthButton.Rebirth.Main.TextLabel
     if not Label or not Label:IsA("TextLabel") then return nil end
 
-    local Text = memory.readstring(Label, Offsets.GuiObject.Text)
+    local Text = Module.Function:GetText(Label)
     if not Text or Text == "" then return nil end
 
     local Number, Suffix = Text:match("-%s*([%d%.]+)%s*(%a?)")
@@ -205,6 +219,59 @@ function Module.Function:AutoCollect()
     end
 end
 
+local StoredPos = nil
+
+function Module.Function:EquipLoadout(Option)
+    local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+    if not PlayerGui then return end 
+
+    local Character = LocalPlayer.Character
+    if not Character then return end
+
+    local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+    if not HumanoidRootPart then return end
+
+    StoredPos = HumanoidRootPart.Position
+    local Plot = Module.Function:GetPlot()
+    if not Plot then return end
+
+    local PurchasedObjects = Plot:FindFirstChild("PurchasedObjects")
+    if not PurchasedObjects then return end
+
+    local Loadout = PurchasedObjects:FindFirstChild("Loadout")
+    if not Loadout then return end
+
+    if Loadout then
+        local Prompt = Loadout:FindFirstChild("Prompt")
+        Module.Function:SetPosition(HumanoidRootPart, Prompt)
+    end
+
+    task.spawn(function()
+        task.wait(0.5) 
+        keypress(0x45)
+        task.wait(1)
+        keyrelease(0x45)
+
+        local Options = PlayerGui.UI.Container.Screen.Loadouts.TopBar.Options
+        if not Options then return end
+
+        task.wait(0.5)
+
+        Module.Function:ClickButton(Options:FindFirstChild(Option))
+
+        task.wait(0.5)
+
+        local Equip = PlayerGui.UI.Container.Screen.Loadouts.Body.RightSide.Options.EquipButton
+        if Equip then
+            Module.Function:ClickButton(Equip)
+        end
+
+        task.wait(0.5)
+
+        HumanoidRootPart.Position = StoredPos
+    end)
+end
+
 function Module.Function:ResolvePad(Item)
     local Primary = Item:FindFirstChild("Gradient") or Item.PrimaryPart
 
@@ -265,7 +332,7 @@ function Module.Function:AutoComplete()
 
     if #RebirthButtons > 0 then
         table.sort(RebirthButtons, function(a, b) return a.Req < b.Req end)
-        for _, Button in ipairs(RebirthButtons) do
+        for _, Button in RebirthButtons do
             Module.Function:SetPosition(HumanoidRootPart, Button.Pad)
             task.wait(0.3)
         end
@@ -274,7 +341,7 @@ function Module.Function:AutoComplete()
 
     if #OilButtons > 0 then
         table.sort(OilButtons, function(a, b) return a.Price < b.Price end)
-        for _, Target in ipairs(OilButtons) do
+        for _, Target in OilButtons do
             if Module.Function:GetCash() >= Target.Price then
                 Module.Function:SetPosition(HumanoidRootPart, Target.Pad)
                 task.wait(0.3)
@@ -334,6 +401,7 @@ end)
 
 -- // Initalize \\ --
 
+Automation:Button({Name = "Equip Loadout", Callback = function() Module.Function:EquipLoadout(tonumber(Library.Flags["Loadout Option"].Value)) end})
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
