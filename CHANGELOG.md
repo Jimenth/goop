@@ -76,3 +76,14 @@ War Tycoon
 
 + Quick Loadout Equip
 ```
+
+8/1/26
+```
+Cursed Tank Simulator - Added
+
++ Name ESP
++ Box ESP 
+
++ Primary + Secondary Penetration Multiplier
++ Primary + Secondary Speed Multiplier
+```
