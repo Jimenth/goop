@@ -173,13 +173,13 @@ local Library do
     LoadFonts()
 
     Library.FontSize = 13
-    Library.Font = Library.Fonts.Data.Fonts["ProggyClean"] and "ProggyClean" or Library.Fonts.Data.List[1]
+    Library.Font = Library.Fonts.Data.Fonts["Verdana"] and "Verdana" or Library.Fonts.Data.List[1]
 
     -- // Icons \\ --
 
     local IconUrls = {
-        Home   = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Home.png",
-        Style  = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Style.png",
+        Home = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Home.png",
+        Style = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Style.png",
         Config = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Config.png",
     }
 
@@ -1574,6 +1574,92 @@ local Library do
         end
     end
 
+    -- PowerPoint-style soft snapping. Given the raw dragged position, nudge each of
+    -- the window's edges/centre onto a nearby edge/centre of another visible window
+    -- or the screen (within SnapDist), and record 1px guide rects for the render loop
+    -- to draw. Movement stays free: outside the threshold nothing is altered, and
+    -- holding Alt (or clearing Library.WindowSnapping) disables it entirely.
+    local function ComputeWindowSnap(Window, ProposedX, ProposedY)
+        Library.SnapGuides = nil
+
+        if Library.WindowSnapping == false then
+            return ProposedX, ProposedY
+        end
+
+        local Pressed = getpressedkeys() or { }
+        if TableFind(Pressed, "LeftAlt") or TableFind(Pressed, "RightAlt") then
+            return ProposedX, ProposedY
+        end
+
+        local SnapDist = 8 * Library.DPIScale
+        local W, H = Window.Width, Window.Height
+
+        local DragXs = { ProposedX, ProposedX + W / 2, ProposedX + W }
+        local DragYs = { ProposedY, ProposedY + H / 2, ProposedY + H }
+
+        local BestX, BestXDelta, GuideX, GuideXTarget = SnapDist + 1, 0, nil, nil
+        local BestY, BestYDelta, GuideY, GuideYTarget = SnapDist + 1, 0, nil, nil
+
+        local function Consider(TXs, TYs, T)
+            for _, DX in DragXs do
+                for _, TX in TXs do
+                    local Dist = math.abs(TX - DX)
+                    if Dist < BestX then
+                        BestX, BestXDelta, GuideX, GuideXTarget = Dist, TX - DX, TX, T
+                    end
+                end
+            end
+            for _, DY in DragYs do
+                for _, TY in TYs do
+                    local Dist = math.abs(TY - DY)
+                    if Dist < BestY then
+                        BestY, BestYDelta, GuideY, GuideYTarget = Dist, TY - DY, TY, T
+                    end
+                end
+            end
+        end
+
+        for _, Other in Library.Windows do
+            if Other ~= Window and Other.Visible then
+                Consider(
+                    { Other.X, Other.X + Other.Width / 2, Other.X + Other.Width },
+                    { Other.Y, Other.Y + Other.Height / 2, Other.Y + Other.Height },
+                    { Left = Other.X, Right = Other.X + Other.Width, Top = Other.Y, Bottom = Other.Y + Other.Height }
+                )
+            end
+        end
+
+        -- Screen edges + centre.
+        local VX, VY = Library.Viewport.X, Library.Viewport.Y
+        Consider(
+            { 0, VX / 2, VX },
+            { 0, VY / 2, VY },
+            { Left = 0, Right = VX, Top = 0, Bottom = VY }
+        )
+
+        local FinalX = GuideX and (ProposedX + BestXDelta) or ProposedX
+        local FinalY = GuideY and (ProposedY + BestYDelta) or ProposedY
+
+        if GuideX or GuideY then
+            local Guides = { }
+            if GuideX then
+                -- Vertical guide, spanning both the window and the aligned target.
+                local Top = MathMin(FinalY, GuideXTarget.Top)
+                local Bottom = MathMax(FinalY + H, GuideXTarget.Bottom)
+                Guides[#Guides + 1] = { GuideX, Top, 1, Bottom - Top }
+            end
+            if GuideY then
+                -- Horizontal guide.
+                local Left = MathMin(FinalX, GuideYTarget.Left)
+                local Right = MathMax(FinalX + W, GuideYTarget.Right)
+                Guides[#Guides + 1] = { Left, GuideY, Right - Left, 1 }
+            end
+            Library.SnapGuides = Guides
+        end
+
+        return FinalX, FinalY
+    end
+
     function WindowClass:Render()
         -- Consume clicks that land inside an open colorpicker window.
         if Library.ActiveColorPicker and Library.ActiveColorPicker.LastRect and Library.Input.MouseClicked then
@@ -1612,8 +1698,9 @@ local Library do
         end
         if not Library.Input.MouseDown then self.Dragging = false end
         if self.Dragging then
-            self.X = Library.Input.MouseX - self.DragOffsetX
-            self.Y = Library.Input.MouseY - self.DragOffsetY
+            local ProposedX = Library.Input.MouseX - self.DragOffsetX
+            local ProposedY = Library.Input.MouseY - self.DragOffsetY
+            self.X, self.Y = ComputeWindowSnap(self, ProposedX, ProposedY)
             X, Y = self.X, self.Y
         end
 
@@ -2855,11 +2942,14 @@ local Library do
     Library.MasterVisible = true
     Library.MasterPrevState = false
     Library.MasterSavedStates = { }
+    Library.WindowSnapping = true
+    Library.SnapGuides = nil
 
     local RenderConnection = RunService.Render:Connect(function()
         Library:UpdateInput()
         Library.Input.Consumed = false
         Library.DropdownOverlay = nil
+        Library.SnapGuides = nil
 
         local MainWin = Library.Windows[1]
         if not MainWin then return end
@@ -2898,6 +2988,12 @@ local Library do
         for _, Window in Library.Windows do
             if Window.Visible then
                 Window:Render()
+            end
+        end
+
+        if Library.SnapGuides then
+            for _, G in Library.SnapGuides do
+                DrawRect(G[1], G[2], G[3], G[4], Theme["Accent"])
             end
         end
 
