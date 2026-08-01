@@ -19,3 +19,5 @@
 [War Tycoon](https://www.roblox.com/games/4639625707/War-Tycoon)
 
 [Emergency Response Liberty County](https://www.roblox.com/games/2534724415/Emergency-Response-Liberty-County)
+
+[Cursed Tank Simulator](https://www.roblox.com/games/6608498361/Cursed-Tank-Simulator-HOLD-THE-LINE)
