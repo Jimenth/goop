@@ -37,12 +37,6 @@ local Library do
             ["White"] = FromRGB(255, 255, 255),
         },
 
-        Fonts = {
-            ["UI"] = 0, ["System"] = 1, ["SourceSans"] = 4,
-        },
-        Font = "SourceSans", -- UI, System, SourceSans
-        FontSize = 13,
-
         DPIScale = _G.DPIScale or 1,
 
         Layout = {
@@ -74,8 +68,25 @@ local Library do
 
         Folders = {
             Directory = "Goop",
+            Files = "Goop/Files",
+            Fonts = "Goop/Files/Fonts",
+            Images = "Goop/Files/Images",
             Configs = "Goop/" .. tostring(game.GameId) .. "/Configs",
         },
+
+        Fonts = {
+            Data = {List = {}, Fonts = {}},
+            Stored = {
+                {"ProggyClean.ttf",       "ProggyClean.json",       "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/ProggyClean.ttf"},
+                {"Minecraftia.ttf",       "Minecraftia.json",       "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Minecraftia.ttf"},
+                {"Verdana.ttf",           "Verdana.json",           "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Verdana.ttf"},
+                {"Visitor.ttf",           "Visitor.json",           "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Visitor.ttf"},
+                {"SmallestPixel.ttf",     "SmallestPixel.json",     "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/SmallestPixel.ttf"},
+                {"Windows-XP-Tahoma.ttf", "Windows-XP-Tahoma.json", "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Windows-XP-Tahoma.ttf"},
+                {"Consolas-Bold.ttf",     "Consolas-Bold.json",     "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Consolas-Bold.ttf"},
+                {"Monaco.ttf",            "Monaco.json",            "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Monaco.ttf"},
+            },
+        }
     }
 
     Library.Camera = Camera
@@ -135,16 +146,61 @@ local Library do
         ["Space"] = " ", ["Minus"] = "-", ["Underscore"] = "_", ["Period"] = ".",
     }
 
-    for _, File in Library.Folders do
-        if not isfolder(File) then
-            makefolder(File)
+    for _, Folder in Library.Folders do
+        if not fs.folder(Folder) then
+            fs.make(Folder)
         end
     end
 
-    -- // Core \\ --
-    local Vector3New = Vector3.new
-    local OutlineColor = Vector3New(0, 0, 0)
+    local function LoadFonts()
+        for _, FontData in pairs(Library.Fonts.Stored) do
+            local Name, Url = FontData[1]:match("([^%.]+)"), FontData[3]
+            local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
 
+            if not fs.file(TTFPath) then
+                local Body = http.get({ url = Url })
+                fs.write(TTFPath, Body)
+            end
+
+            local Data = fs.read(TTFPath)
+            Drawing.RegisterFont(Name, 13, Data)
+
+            Library.Fonts.Data.Fonts[Name] = true
+            table.insert(Library.Fonts.Data.List, Name)
+        end
+    end
+
+    LoadFonts()
+
+    Library.FontSize = 13
+    Library.Font = Library.Fonts.Data.Fonts["ProggyClean"] and "ProggyClean" or Library.Fonts.Data.List[1]
+
+    -- // Icons \\ --
+
+    local IconUrls = {
+        Home   = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Home.png",
+        Style  = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Style.png",
+        Config = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Config.png",
+    }
+
+    Library.Icons = { }
+
+    local function LoadIcons()
+        for Name, Url in pairs(IconUrls) do
+            local ImagePath = Library.Folders.Images .. "/" .. Name .. ".png"
+
+            if not fs.file(ImagePath) then
+                fs.write(ImagePath, http.get({ url = Url }))
+            end
+
+            Library.Icons[Name] = fs.read(ImagePath)
+        end
+    end
+
+    LoadIcons()
+
+    -- // Core \\ --
+    local OutlineColor = Vector3.new(0, 0, 0)
     local PropCache = setmetatable({ }, { __mode = "k" })
 
     local function NewDrawing(Type, Properties)
@@ -177,12 +233,14 @@ local Library do
     local Pool = {
         Squares = { }, SquareCount = 0,
         Texts = { }, TextCount = 0,
+        Images = { }, ImageCount = 0,
         Order = 0,
     }
 
     function Pool:Begin()
         self.SquareCount = 0
         self.TextCount = 0
+        self.ImageCount = 0
         self.Order = 0
     end
 
@@ -192,6 +250,9 @@ local Library do
         end
         for Index = self.TextCount + 1, #self.Texts do
             UpdateDrawing(self.Texts[Index], { Visible = false })
+        end
+        for Index = self.ImageCount + 1, #self.Images do
+            UpdateDrawing(self.Images[Index], { Visible = false })
         end
     end
 
@@ -237,7 +298,7 @@ local Library do
             Text = Text,
             Center = Center or false,
             Opacity = Opacity or 1,
-            Font = Library.Fonts[Library.Font] or 0,
+            Font = Library.Font,
             ZIndex = Pool.Order,
         })
     end
@@ -248,9 +309,31 @@ local Library do
         UpdateDrawing(MeasureText, {
             Text = tostring(Text),
             Size = Size or Library.FontSize,
-            Font = Library.Fonts[Library.Font] or 0,
+            Font = Library.Font,
         })
         return MeasureText.TextBounds
+    end
+
+    local function DrawImage(X, Y, W, H, Data, Color, Opacity, ForcedZ)
+        Pool.Order = Pool.Order + 1
+        local Index = Pool.ImageCount + 1
+        Pool.ImageCount = Index
+
+        local Object = Pool.Images[Index]
+        if not Object then
+            Object = NewDrawing("Image", { })
+            Pool.Images[Index] = Object
+        end
+
+        UpdateDrawing(Object, {
+            Visible = true,
+            Position = Vector2New(X, Y),
+            Size = Vector2New(W, H),
+            Data = Data,
+            Color = Color or Theme["White"],
+            Opacity = Opacity or 1,
+            ZIndex = ForcedZ or Pool.Order,
+        })
     end
 
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
@@ -1291,8 +1374,9 @@ local Library do
                 end
             end
 
-            -- Accent line across the very top, over the tab strip.
-            DrawRect(X + 2, Y + 2, Width - 4, 1, Theme["Accent"])
+            -- Accent line across the very top, over the tab strip. Matches the 2px
+            -- accent bar drawn by regular and scrollable sections.
+            DrawRect(X + 2, Y + 2, Width - 4, 2, Theme["Accent"])
 
             -- Active sub-section's elements.
             local CursorX = X + Padding
@@ -1743,7 +1827,6 @@ local Library do
         end
 
         Library:RenderColorPicker()
-        self:RenderNotifications()
 
         if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
             Library.ActiveDropdown.Open = false
@@ -2292,6 +2375,12 @@ local Library do
                 ["Dark Background"] = FromRGB(30, 32, 46),
                 ["Border"] = FromRGB(32, 32, 57),
             } },
+            { Name = "Github", Colors = {
+                ["Accent"] = FromRGB(47, 129, 247),
+                ["Background"] = FromRGB(22, 27, 34),
+                ["Dark Background"] = FromRGB(13, 17, 23),
+                ["Border"] = FromRGB(48, 54, 61),
+            } },
             { Name = "Gamesense", Colors = {
                 ["Accent"] = FromRGB(181, 249, 21),
                 ["Background"] = FromRGB(28, 28, 28),
@@ -2321,66 +2410,6 @@ local Library do
                 ["Background"] = FromRGB(25, 27, 25),
                 ["Dark Background"] = FromRGB(18, 20, 18),
                 ["Border"] = FromRGB(40, 38, 40),
-            } },
-            { Name = "Jasmine", Colors = {
-                ["Accent"] = FromRGB(245, 226, 158),
-                ["Background"] = FromRGB(30, 29, 25),
-                ["Dark Background"] = FromRGB(23, 22, 18),
-                ["Border"] = FromRGB(86, 78, 44),
-            } },
-            { Name = "Godly", Colors = {
-                ["Accent"] = FromRGB(255, 208, 92),
-                ["Background"] = FromRGB(30, 28, 23),
-                ["Dark Background"] = FromRGB(23, 21, 17),
-                ["Border"] = FromRGB(96, 74, 28),
-            } },
-            { Name = "Obsidian", Colors = {
-                ["Accent"] = FromRGB(138, 116, 184),
-                ["Background"] = FromRGB(20, 19, 24),
-                ["Dark Background"] = FromRGB(14, 14, 18),
-                ["Border"] = FromRGB(60, 50, 88),
-            } },
-            { Name = "Iron", Colors = {
-                ["Accent"] = FromRGB(174, 180, 192),
-                ["Background"] = FromRGB(27, 28, 30),
-                ["Dark Background"] = FromRGB(21, 22, 24),
-                ["Border"] = FromRGB(64, 72, 84),
-            } },
-            { Name = "Flame", Colors = {
-                ["Accent"] = FromRGB(255, 106, 38),
-                ["Background"] = FromRGB(29, 24, 21),
-                ["Dark Background"] = FromRGB(22, 18, 15),
-                ["Border"] = FromRGB(98, 52, 24),
-            } },
-            { Name = "Rose", Colors = {
-                ["Accent"] = FromRGB(234, 110, 142),
-                ["Background"] = FromRGB(29, 25, 27),
-                ["Dark Background"] = FromRGB(22, 19, 21),
-                ["Border"] = FromRGB(88, 50, 62),
-            } },
-            { Name = "Poppy", Colors = {
-                ["Accent"] = FromRGB(229, 62, 48),
-                ["Background"] = FromRGB(29, 23, 22),
-                ["Dark Background"] = FromRGB(22, 17, 16),
-                ["Border"] = FromRGB(96, 42, 34),
-            } },
-            { Name = "Navy", Colors = {
-                ["Accent"] = FromRGB(76, 116, 228),
-                ["Background"] = FromRGB(21, 24, 33),
-                ["Dark Background"] = FromRGB(15, 18, 27),
-                ["Border"] = FromRGB(40, 60, 110),
-            } },
-            { Name = "Ruby", Colors = {
-                ["Accent"] = FromRGB(219, 32, 70),
-                ["Background"] = FromRGB(29, 21, 24),
-                ["Dark Background"] = FromRGB(22, 15, 18),
-                ["Border"] = FromRGB(100, 36, 56),
-            } },
-            { Name = "Diamond", Colors = {
-                ["Accent"] = FromRGB(164, 226, 242),
-                ["Background"] = FromRGB(25, 28, 30),
-                ["Dark Background"] = FromRGB(19, 22, 24),
-                ["Border"] = FromRGB(54, 80, 92),
             } },
         }
 
@@ -2416,8 +2445,8 @@ local Library do
 
         StyleSection:Dropdown({
             Name = "Font Selector",
-            Options = { "UI", "System", "SourceSans" },
-            Default = 3,
+            Options = Library.Fonts.Data.List,
+            Default = TableFind(Library.Fonts.Data.List, Library.Font) or 1,
             Flag = "UI_Font",
             Callback = function(Selection)
                 Library.Font = Selection
@@ -2631,11 +2660,14 @@ local Library do
             Width = Width,
             Height = Height,
             Buttons = {
-                { Label = "M", Window = Main },
-                { Label = "S", Window = Style },
-                { Label = "C", Window = Configuration },
+                { Icon = Library.Icons.Home,   Window = Main },
+                { Icon = Library.Icons.Style,  Window = Style },
+                { Icon = Library.Icons.Config, Window = Configuration },
             },
         }
+
+        -- The icon Image objects are created lazily (and rebuilt on colour change)
+        -- by the render loop; see the NavigationBar section of the render loop.
     end
 
     -- // Watermark \\ --
@@ -2858,7 +2890,22 @@ local Library do
             Library.MasterPrevState = false
         end
 
-        if Library.NavigationBarData then
+        Library:RenderWatermark()
+        Library:RenderGroupRanked()
+
+        MainWin:RenderKeybindList()
+
+        for _, Window in Library.Windows do
+            if Window.Visible then
+                Window:Render()
+            end
+        end
+
+        for _, Window in Library.Windows do
+            Window:RenderNotifications()
+        end
+
+        if Library.NavigationBarData and Library.MasterVisible then
             local NB = Library.NavigationBarData
             local BtnSize = 28
             local BtnGap = 3
@@ -2877,28 +2924,38 @@ local Library do
                     Active and Theme["Accent"] or Theme["Border"],
                     Active and Theme["Accent"] or (Hovered and Theme["Dark Background"] or Theme["Background"]))
 
-                local Bounds = GetTextBounds(Btn.Label)
-                DrawText(BX + MathFloor((BtnSize - Bounds.X) / 2), BY + MathFloor((BtnSize - Bounds.Y) / 2), Library.FontSize,
-                    Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"]), Btn.Label)
+                local IconPad = 6
+                local IW = BtnSize - IconPad * 2
+                local IH = IW
+
+                local IconColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
+
+                if not Btn._Drawing or Btn._IconColor ~= IconColor then
+                    if Btn._Drawing then Btn._Drawing:Remove() end
+                    Btn._Drawing = NewDrawing("Image", {
+                        Visible = true,
+                        Position = Vector2New(BX + IconPad, BY + IconPad),
+                        Size = Vector2New(IW, IH),
+                        Data = Btn.Icon,
+                        Color = IconColor,
+                        Opacity = 1,
+                        ZIndex = 10000,
+                    })
+                    Btn._IconColor = IconColor
+                end
 
                 if Library.Input.MouseClicked and Hovered and Btn.Window then
                     Library.Input.Consumed = true
                     Btn.Window.Visible = not Btn.Window.Visible
-                    if not Library.MasterVisible then
-                        Library.MasterSavedStates[Btn.Window] = Btn.Window.Visible
-                    end
                 end
             end
-        end
-
-        Library:RenderWatermark()
-        Library:RenderGroupRanked()
-
-        MainWin:RenderKeybindList()
-
-        for _, Window in Library.Windows do
-            if Window.Visible then
-                Window:Render()
+        elseif Library.NavigationBarData then
+            for _, Btn in Library.NavigationBarData.Buttons do
+                if Btn._Drawing then
+                    Btn._Drawing:Remove()
+                    Btn._Drawing = nil
+                    Btn._IconColor = nil
+                end
             end
         end
 
@@ -2912,8 +2969,19 @@ local Library do
         end
         for _, Square in Pool.Squares do Square:Remove() end
         for _, Object in Pool.Texts do Object:Remove() end
+        for _, Image in Pool.Images do Image:Remove() end
         Pool.Squares, Pool.SquareCount = { }, 0
         Pool.Texts, Pool.TextCount = { }, 0
+        Pool.Images, Pool.ImageCount = { }, 0
+
+        if Library.NavigationBarData and Library.NavigationBarData.Buttons then
+            for _, Btn in ipairs(Library.NavigationBarData.Buttons) do
+                if Btn._Drawing then
+                    Btn._Drawing:Remove()
+                    Btn._Drawing = nil
+                end
+            end
+        end
     end
 end
 
