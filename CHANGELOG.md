@@ -103,4 +103,13 @@ Cursed Tank Simulator
 
 + Hull and Turret Ammunition Module Rendering
 + Improved Bounding Box
+
+Havoc
+
+- Removed Grass Removal
+
++ Unique Color For NPCs
++ Body ESP
++ Mine ESP
++ Extraction ESP
 ```
