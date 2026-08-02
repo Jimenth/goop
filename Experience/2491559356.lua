@@ -75,7 +75,9 @@ function Module.Function:Cache()
 end
 
 function Module.Function:GetRealName(Vehicle)
-    local Player = Players:FindFirstChild(string.sub(Vehicle.Name, 8))
+    local FullName = Vehicle.Name
+
+    local Player = Players:FindFirstChild(string.sub(FullName, 8))
     if not Player then return "NPC" end
 
     return Player.Name
@@ -105,17 +107,22 @@ end
 function Module.Function:ApplyShells(Shells, Enabled, Flag, Value, OriginalStore)
     for _, Shell in Shells:GetChildren() do
         local ValueObject = Shell:FindFirstChild(Value)
-        if ValueObject then
+
+        if ValueObject and ValueObject:IsA("ValueBase") then
             if Library.Flags[Enabled] then
-                if not OriginalStore[ValueObject] then
-                    OriginalStore[ValueObject] = ValueObject.Value
+                local Base = OriginalStore[ValueObject]
+                if Base == nil then
+                    Base = ValueObject.Value
+                    OriginalStore[ValueObject] = Base
                 end
 
-                local NewValue = OriginalStore[ValueObject] * Library.Flags[Flag].Value
+                if type(Base) == "number" then
+                    local NewValue = Base * Library.Flags[Flag].Value
 
-                ValueObject.Value = NewValue
-                ValueObject:SetAttribute("Orig", NewValue)
-            elseif OriginalStore[ValueObject] then
+                    ValueObject.Value = NewValue
+                    ValueObject:SetAttribute("Orig", NewValue)
+                end
+            elseif OriginalStore[ValueObject] ~= nil then
                 local Original = OriginalStore[ValueObject]
 
                 ValueObject.Value = Original
@@ -127,6 +134,7 @@ end
 
 function Module.Function:SetValues(Vehicle)
     if not Vehicle then return nil end
+    if not Vehicle:FindFirstChild("Gun") then return nil end
 
     local Penetration = Module.Stored.Original.Penetration
     local Speed = Module.Stored.Original.Speed
