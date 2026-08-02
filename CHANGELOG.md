@@ -93,3 +93,11 @@ Multicrew Tank Combat
 > Improved Convex Hull Performance
 > Fixed Many Invalid Instance Errors
 ```
+
+8/2/26
+```
+Cursed Tank Simulator
+
+- Removed Force Penetration (DETECTED)
+- Removed Force Speed (DETECTED)
+```
