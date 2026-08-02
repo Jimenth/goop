@@ -68,6 +68,7 @@ local Module = {
                 Clicking = false,
 
                 LastDigit = nil,
+                Blank = false,
 
                 VisibleTime = nil,
                 WaitTime = 0,
@@ -710,6 +711,7 @@ function Module.Function:SolveVehicle()
                     NS.Sequence = {}
                     NS.Index = 1
                     NS.LastDigit = nil
+                    NS.Blank = false
                     NS.Started = true
                     NS.Clicking = false
                     NS.Stage = "Reading"
@@ -722,11 +724,13 @@ function Module.Function:SolveVehicle()
         if NS.Stage == "Reading" then
             local Current = Module.Function:GetText(CurrentNumber)
 
-            if Current and Current ~= "" then
-                local Digit = tonumber(Current)
+            if not Current or Current == "" then
+                NS.Blank = true
+            elseif NS.Blank then
+                NS.Blank = false
 
-                if Digit and Digit ~= NS.LastDigit then
-                    NS.LastDigit = Digit
+                local Digit = tonumber(Current)
+                if Digit then
                     table.insert(NS.Sequence, Digit)
 
                     print("Collected:", Digit)
@@ -785,6 +789,7 @@ function Module.Function:SolveVehicle()
                 NS.Sequence = {}
                 NS.Index = 1
                 NS.LastDigit = nil
+                NS.Blank = false
                 NS.Stage = "Reading"
             end
 
@@ -813,7 +818,7 @@ function Module.Function:SolveVehicle()
         return true
     end
 
-    if (os.clock() - State.WiringStart) < 0.5 then
+    if (os.clock() - State.WiringStart) < 0.25 then
         return true
     end
 
@@ -888,25 +893,32 @@ function Module.Function:SolveVehicle()
             task.spawn(function()
                 mousemoveabs(StartPos.X, StartPos.Y)
 
-                task.wait(0.2)
+                task.wait(0.08)
 
                 mouse1press()
 
-                task.wait(0.2)
+                task.wait(0.08)
 
                 Module.Function:SmoothMoveMouse(
                     EndPos.X,
                     EndPos.Y,
-                    30
+                    15
                 )
 
-                task.wait(0.2)
+                task.wait(0.05)
 
                 mouse1release()
 
-                task.wait(0.3)
+                local Connected
+                for _ = 1, 20 do
+                    task.wait(0.02)
+                    Connected = Drag:GetAttribute("Connected")
+                    if Connected == true or Connected == "true" then
+                        break
+                    end
+                end
 
-                if Drag:GetAttribute("Connected") == "true" then
+                if Connected == true or Connected == "true" then
                     State.Wired[Wire.Name] = true
                 end
 
@@ -921,10 +933,14 @@ function Module.Function:SolveVehicle()
 end
 
 function Module.Function:GetCharacterParts(Character)
+    if not Character then
+        return {}, 0
+    end
+    
     local Parts = {}
     local Count = 0
     
-    for Index, Child in Character:GetChildren() do
+    for _, Child in Character:GetChildren() do
         if Child:IsA("Part") or Child:IsA("MeshPart") then
             Count = Count + 1
             Parts[Count] = Child
@@ -991,10 +1007,16 @@ task.spawn(function()
     end
 end)
 RunService.PostLocal:Connect(function()
-    Module.Function:UpdateInput() 
+    Module.Function:UpdateInput()
 
-    Module.Function:SolveLockpick() 
-    Module.Function:SolveATM() 
+    Module.Function:SolveATM()
     Module.Function:SolveJewelry()
     Module.Function:SolveVehicle()
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.01)
+        Module.Function:SolveLockpick()
+    end
 end)
