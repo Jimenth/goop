@@ -25,17 +25,24 @@ local Convex = {
     Scratch = {
         Points = {},
         Hull = {},
-        Poly = {}
+        Verts = {}
     },
 
     Static = {
         HWMPoints = 0,
-        HWMHull = 0,
-        HWMPoly = 0
+        HWMVerts = 0
     }
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+
+local Vector2New = Vector2.new
+local Vector3New = Vector3.new
+local MathMax = math.max
+local MathAbs = math.abs
+local TableSort = table.sort
+local FilledTriangle = DrawingImmediate.FilledTriangle
+local Polyline = DrawingImmediate.Polyline
 
 -- // Interface \\ --
 
@@ -91,20 +98,26 @@ function Module.Function:CrossDimension(OriginX, OriginY, PointAX, PointAY, Poin
     return (PointAX - OriginX) * (PointBY - OriginY) - (PointAY - OriginY) * (PointBX - OriginX)
 end
 
+local function PointSort(PointA, PointB)
+    return PointA.X < PointB.X or (PointA.X == PointB.X and PointA.Y < PointB.Y)
+end
+
 function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     if PointCount == 0 then return 0 end
     if PointCount == 1 then Outer[1] = Points[1]; return 1 end
     if PointCount == 2 then Outer[1] = Points[1]; Outer[2] = Points[2]; return 2 end
 
-    table.sort(Points, function(PointA, PointB)
-        return PointA.X < PointB.X or (PointA.X == PointB.X and PointA.Y < PointB.Y)
-    end)
+    TableSort(Points, PointSort)
 
     local Size = 0
 
     for Index = 1, PointCount do
         local Point = Points[Index]
-        while Size >= 2 and self:CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
+        local PX, PY = Point.X, Point.Y
+        while Size >= 2 do
+            local O = Outer[Size - 1]
+            local A = Outer[Size]
+            if (A.X - O.X) * (PY - O.Y) - (A.Y - O.Y) * (PX - O.X) > 0 then break end
             Size = Size - 1
         end
         Size = Size + 1
@@ -114,7 +127,11 @@ function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     local LowerHullSize = Size
     for Index = PointCount - 1, 1, -1 do
         local Point = Points[Index]
-        while Size > LowerHullSize and self:CrossDimension(Outer[Size - 1].X, Outer[Size - 1].Y, Outer[Size].X, Outer[Size].Y, Point.X, Point.Y) <= 0 do
+        local PX, PY = Point.X, Point.Y
+        while Size > LowerHullSize do
+            local O = Outer[Size - 1]
+            local A = Outer[Size]
+            if (A.X - O.X) * (PY - O.Y) - (A.Y - O.Y) * (PX - O.X) > 0 then break end
             Size = Size - 1
         end
         Size = Size + 1
@@ -163,7 +180,7 @@ function Module.Function:ProjectPartCorners(Part, WriteOffset)
         for _ = 1, 2 do
             local SignL = 1
             for _ = 1, 2 do
-                local WorldPoint = Vector3.new(
+                local WorldPoint = Vector3New(
                     PositionX + SignR * RightX + SignU * UpX + SignL * LookX,
                     PositionY + SignR * RightY + SignU * UpY + SignL * LookY,
                     PositionZ + SignR * RightZ + SignU * UpZ + SignL * LookZ
@@ -191,35 +208,38 @@ function Module.Function:ProjectPartCorners(Part, WriteOffset)
     return WriteOffset
 end
 
-function Module.Function:DrawPolygon(Hull, Size, Color, Opacity)
+function Module.Function:BuildHullVerts(Hull, Size)
+    local Verts = Convex.Scratch.Verts
+    for Index = 1, Size do
+        local Point = Hull[Index]
+        Verts[Index] = Vector2New(Point.X, Point.Y)
+    end
+    return Verts
+end
+
+function Module.Function:DrawPolygon(Verts, Size, Color, Opacity)
     if Size < 3 then return end
 
-    local Pivot = Vector2.new(Hull[1].X, Hull[1].Y)
+    local Pivot = Verts[1]
     for Index = 2, Size - 1 do
-        DrawingImmediate.FilledTriangle(Pivot, Vector2.new(Hull[Index].X, Hull[Index].Y), Vector2.new(Hull[Index + 1].X, Hull[Index + 1].Y), Color, Opacity)
+        FilledTriangle(Pivot, Verts[Index], Verts[Index + 1], Color, Opacity)
     end
 end
 
-function Module.Function:DrawOutline(Hull, Size, Color, Opacity, Thickness)
+function Module.Function:DrawOutline(Verts, Size, Color, Opacity, Thickness)
     if Size < 2 then return end
 
-    for Index = 1, Size do
-        local Entry = Hull[Index]
-        Convex.Scratch.Poly[Index] = Vector2.new(Entry.X, Entry.Y)
-    end
+    Verts[Size + 1] = Verts[1]
 
-    Convex.Scratch.Poly[Size + 1] = Vector2.new(Hull[1].X, Hull[1].Y)
-    Convex.Scratch.Poly[Size + 2] = nil
-
-    if Size + 1 < Convex.Static.HWMPoly then
-        for Index = Size + 2, Convex.Static.HWMPoly do
-            Convex.Scratch.Poly[Index] = nil
+    if Size + 1 < Convex.Static.HWMVerts then
+        for Index = Size + 2, Convex.Static.HWMVerts do
+            Verts[Index] = nil
         end
     end
 
-    Convex.Static.HWMPoly = math.max(Convex.Static.HWMPoly, Size + 1)
+    Convex.Static.HWMVerts = MathMax(Convex.Static.HWMVerts, Size + 1)
 
-    DrawingImmediate.Polyline(Convex.Scratch.Poly, Color, Opacity, Thickness)
+    Polyline(Verts, Color, Opacity, Thickness)
 end
 
 function Module.Function:NotNumerical(Name)
@@ -274,7 +294,8 @@ function Module.Function:VehicleCache()
                 Vehicle = Vehicle,
                 PrimaryPart = Vehicle.PrimaryPart,
                 Groups = nil,
-                Occupied = false
+                Occupied = false,
+                Team = Module.Function:GetVehicleTeam(Vehicle)
             }
 
             task.delay(1, function()
@@ -427,7 +448,7 @@ function Module.Function:RestoreArmor()
     end
 end
 
-function Module.Function.Render()
+function Module.Function:Render()
     if not LocalPlayer then return end
 
     local Character = LocalPlayer.Character
@@ -446,8 +467,7 @@ function Module.Function.Render()
             if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then continue end
 
             if is_team_check_active() then
-                local Team = Module.Function:GetVehicleTeam(Vehicle)
-                if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
+                if LocalPlayer.Team and LocalPlayer.Team.Parent and Data.Team == LocalPlayer.Team.Name then
                     continue
                 end
             end
@@ -466,8 +486,8 @@ function Module.Function.Render()
                 Distance = 0
             end
 
-            local NameWidth = Name and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Name).X or 0
-            local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Proxyma_Condensed", 12, Distance).X or 0
+            local NameWidth = Name and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
+            local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
             local Padding = Name and Distance and 4 or 0
 
             local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
@@ -475,18 +495,18 @@ function Module.Function.Render()
 
             if Name then
                 local NameColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
-                DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 12, NameColor.Color, NameColor.Alpha, Name, true, "Proxyma_Condensed")
+                DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Verdana")
                 X = X + NameWidth + Padding
             end
 
             if Distance then
                 local DistanceColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
-                DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 12, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Proxyma_Condensed")
+                DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Verdana")
             end
 
             local Groups = Data.Groups
             if not (Library.Flags["Render Modules"] and Groups) then continue end
-            if math.abs(Screen.X - CenterX) > Half or math.abs(Screen.Y - CenterY) > Half then continue end
+            if MathAbs(Screen.X - CenterX) > Half or MathAbs(Screen.Y - CenterY) > Half then continue end
 
             for _, Group in ipairs(Groups) do
                 local GroupType = Group.Type
@@ -509,10 +529,9 @@ function Module.Function.Render()
                 local Size = self:CalculateConvexHull(Convex.Scratch.Points, PointCount, Convex.Scratch.Hull)
                 if Size == 0 then continue end
 
-                Convex.Static.HWMHull = self:TruncateBuffer(Convex.Scratch.Hull, Size, Convex.Static.HWMHull)
-
-                self:DrawPolygon(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha)
-                self:DrawOutline(Convex.Scratch.Hull, Size, Color.Color, Color.Alpha, 1)
+                local Verts = self:BuildHullVerts(Convex.Scratch.Hull, Size)
+                self:DrawPolygon(Verts, Size, Color.Color, Color.Alpha)
+                self:DrawOutline(Verts, Size, Color.Color, Color.Alpha, 1)
             end
         end
     end
@@ -543,7 +562,7 @@ function Module.Function.Render()
                 DroneText = string.format("Drone [%.0f]", Distance)
             end
 
-            DrawingImmediate.OutlinedText(Screen, 12, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Proxyma_Condensed")
+            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Verdana")
         end
     end
 end
@@ -570,4 +589,6 @@ end)
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Library:Watermark("Goop")
 
-RunService.Render:Connect(Module.Function.Render)
+RunService.Render:Connect(function()
+    Module.Function:Render()
+end)
