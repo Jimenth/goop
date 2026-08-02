@@ -13,17 +13,15 @@ local Module = {
     Game = {
         Crates = Workspace.Buildings.Loots.Loots.Crates,
         Drops = Workspace.Buildings.Loots.Items,
+        Bodies = Workspace.Buildings.Loots.Loots.Characters,
         Tripwires = Workspace.Buildings.EnvInteractable.Mines.Tripmines,
         Barrels = Workspace.Buildings.EventObjects.ExplosiveBarrels,
         Sentries = Workspace.Buildings.EventObjects.Sentries,
+        Minefields = Workspace.Buildings.EventObjects.Minefields,
+        Extractions = Workspace.Ignored.Exfils,
         Entities = nil
     },
 
-    Original = {
-        GrassLength = nil,
-        GrassDefault = 0.5
-    },
-    
     Stored = {
         Objects = {},
         Entities = {}
@@ -1815,8 +1813,7 @@ Module.Game.Entities = (function() for _, m in Workspace:GetChildren() do if m:I
 
 local gc = luau.load(game:HttpGet("https://raw.githubusercontent.com/Sploiter13/severe/refs/heads/main/gc.luau",true),{debugName = "gc"})()
 task.wait(2)
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+local Library = loadfile("Source.lua")()
 
 -- // Interface \\ --
 
@@ -1827,9 +1824,8 @@ local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
 
 local ModSection = WeaponsTab:Section({Name = "Modifiers", Side = 1})
 
-local LootSection = VisualsTab:Section({Name = "Loot", Side = 1})
+local LootSection = VisualsTab:Section({Name = "Loot & Other", Side = 1})
 local DangerSection = VisualsTab:Section({Name = "Danger", Side = 2})
-local WorldSection = VisualsTab:Section({Name = "World", Side = 1})
 
 -- // Modifiers Section \\ --
 
@@ -1859,6 +1855,11 @@ LootSection:Dropdown({Name = "Type Filter", Flag = "Drop Type Filter", Options =
 
 LootSection:Slider({Name = "Maximum Render", Flag = "Drop Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
 
+LootSection:Separator()
+
+LootSection:Toggle({Name = "Render Bodies", Flag = "Render Body", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Body", Flag = "Body Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+LootSection:Slider({Name = "Maximum Render", Flag = "Body Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
+
 -- // Danger Section \\ --
 
 DangerSection:Toggle({Name = "Render Tripwires", Flag = "Render Tripwire", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Tripwire", Flag = "Tripwire Color", Default = Color3.fromRGB(255, 0, 0), Callback = function(Color) end})
@@ -1874,9 +1875,17 @@ DangerSection:Separator()
 DangerSection:Toggle({Name = "Render Sentries", Flag = "Render Sentry", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Sentry", Flag = "Sentry Color", Default = Color3.fromRGB(255, 0, 0), Callback = function(Color) end})
 DangerSection:Slider({Name = "Maximum Render", Flag = "Sentry Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
 
--- // World Section \\ --
+DangerSection:Separator()
 
-WorldSection:Toggle({Name = "Remove Grass", Flag = "Remove Grass", Default = false, Callback = function(Value) end})
+DangerSection:Toggle({Name = "Render Mines", Flag = "Render Mine", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Mine", Flag = "Mine Color", Default = Color3.fromRGB(255, 0, 0), Callback = function(Color) end})
+DangerSection:Slider({Name = "Maximum Render", Flag = "Mine Render", Min = 0, Max = 100, Default = 100, Callback = function(Value) end})
+
+-- // Other Section \\ --
+
+LootSection:Separator()
+
+LootSection:Toggle({Name = "Render Extractions", Flag = "Render Extraction", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Extraction", Flag = "Extraction Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+LootSection:Slider({Name = "Maximum Render", Flag = "Extraction Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
 
 -- // Functions \\ --
 
@@ -1928,6 +1937,21 @@ function Module.Function.Cache()
         end
     end
 
+    for _, Body in Module.Game.Bodies:GetChildren() do
+        if Library.Flags["Render Body"] then
+            local Identifier = tostring(Body)
+
+            if not Stored[Identifier] then
+                Stored[Identifier] = {
+                    Model = Body,
+                    Object = Body:FindFirstChild("HumanoidRootPart") or Body:FindFirstChildOfClass("MeshPart"),
+                    Name = "Body",
+                    Class = "Body"
+                }
+            end
+        end
+    end
+
     for _, Tripwire in Module.Game.Tripwires:GetChildren() do
         if Library.Flags["Render Tripwire"] then
             local Identifier = tostring(Tripwire)
@@ -1968,6 +1992,39 @@ function Module.Function.Cache()
                     Object = Sentry:FindFirstChild("Base"),
                     Name = Sentry.Name,
                     Class = "Sentry"
+                }
+            end
+        end
+    end
+
+    for _, Minefield in Module.Game.Minefields:GetChildren() do
+        if Library.Flags["Render Mine"] and Minefield:IsA("BasePart")
+            and vector.magnitude(Camera.Position - Minefield.Position) <= 100 then
+            for _, Mine in Minefield:GetChildren() do
+                local Identifier = tostring(Mine)
+
+                if not Stored[Identifier] then
+                    Stored[Identifier] = {
+                        Model = Mine,
+                        Object = Mine:IsA("BasePart") and Mine or Mine:FindFirstChildOfClass("MeshPart") or Mine:FindFirstChildOfClass("Part"),
+                        Name = "Mine",
+                        Class = "Mine"
+                    }
+                end
+            end
+        end
+    end
+
+    for _, Extraction in Module.Game.Extractions:GetChildren() do
+        if Library.Flags["Render Extraction"] then
+            local Identifier = tostring(Extraction)
+
+            if not Stored[Identifier] and #Extraction:GetChildren() > 0 then
+                Stored[Identifier] = {
+                    Model = Extraction,
+                    Object = Extraction:FindFirstChild("__flare"),
+                    Name = "Extraction",
+                    Class = "Extraction"
                 }
             end
         end
@@ -2031,9 +2088,9 @@ function Module.Function:EntityData(Entity, Parts)
         BodyHeightScale = 1,
         RigType = 0,
         Teamname = "Enemies",
-        Toolname = "Unknown",
+        Toolname = Entity:FindFirstChildOfClass("Tool") and Entity:FindFirstChildOfClass("Tool").Name or "None",
         Whitelisted = false,
-        Archenemies = false,
+        Archenemies = Players:FindFirstChild(Entity.Name) and false or true,
         Aimbot_Part = Parts.Head,
         Aimbot_TP_Part = Parts.Head,
         Triggerbot_Part = Parts.Head,
@@ -2073,76 +2130,6 @@ function Module.Function:EntityData(Entity, Parts)
     return tostring(Entity), Data
 end
 
-function Module.Function:CharacterData(Character, Parts)
-    if not Character then return nil end
-
-    local Humanoid = Character and Character:FindFirstChild("Humanoid")
-    if not Humanoid then return nil end
-
-    local Health = Humanoid and Humanoid.Health 
-    local MaxHealth = Humanoid and Humanoid.MaxHealth
-
-    local Player = Module.Function:GetPlayerInstance(Character)
-    if not Player then return nil end
-
-    local Data = {
-        Username = Player.Name,
-        Displayname = Player.DisplayName,
-        Userid = Player.UserId,
-        Character = Character,
-        PrimaryPart = Parts.HumanoidRootPart,
-        Humanoid = Humanoid,
-        Head = Parts.Head,
-        Torso = Parts.Torso,
-        LeftArm = Parts.LeftArm or Parts.HumanoidRootPart,
-        LeftLeg = Parts.LeftLeg or Parts.HumanoidRootPart,
-        RightArm = Parts.RightArm or Parts.HumanoidRootPart,
-        RightLeg = Parts.RightLeg or Parts.HumanoidRootPart,
-        BodyHeightScale = 1,
-        RigType = 0,
-        Teamname = Player.Team.Name,
-        Toolname = "Unknown",
-        Whitelisted = false,
-        Archenemies = false,
-        Aimbot_Part = Parts.Head,
-        Aimbot_TP_Part = Parts.Head,
-        Triggerbot_Part = Parts.Head,
-        Health = Health,
-        MaxHealth = Humanoid and Humanoid.MaxHealth or 0,
-        body_parts_data = {
-            { name = "LowerTorso", part = Parts.Torso },
-            { name = "LeftUpperLeg", part = Parts.LeftLeg },
-            { name = "LeftLowerLeg", part = Parts.LeftLeg },
-            { name = "RightUpperLeg", part = Parts.RightLeg },
-            { name = "RightLowerLeg", part = Parts.RightLeg },
-            { name = "LeftUpperArm", part = Parts.LeftArm },
-            { name = "LeftLowerArm", part = Parts.LeftArm },
-            { name = "RightUpperArm", part = Parts.RightArm },
-            { name = "RightLowerArm", part = Parts.RightArm },
-        },
-        full_body_data = {
-            { name = "Head", part = Parts.Head },
-            { name = "UpperTorso", part = Parts.Torso },
-            { name = "LowerTorso", part = Parts.Torso },
-            { name = "HumanoidRootPart", part = Parts.HumanoidRootPart },
-            { name = "LeftUpperArm", part = Parts.LeftArm },
-            { name = "LeftLowerArm", part = Parts.LeftArm },
-            { name = "LeftHand", part = Parts.LeftArm },
-            { name = "RightUpperArm", part = Parts.RightArm },
-            { name = "RightLowerArm", part = Parts.RightArm },
-            { name = "RightHand", part = Parts.RightArm },
-            { name = "LeftUpperLeg", part = Parts.LeftLeg },
-            { name = "LeftLowerLeg", part = Parts.LeftLeg },
-            { name = "LeftFoot", part = Parts.LeftLeg },
-            { name = "RightUpperLeg", part = Parts.RightLeg },
-            { name = "RightLowerLeg", part = Parts.RightLeg },
-            { name = "RightFoot", part = Parts.RightLeg },
-        }
-    }
-
-    return tostring(Character), Data
-end
-
 function Module.Function.PostLocal()
     local Seen = {}
 
@@ -2166,6 +2153,7 @@ function Module.Function.PostLocal()
                     end
                 else
                     edit_model_data({ Health = Humanoid.Health }, Key)
+                    edit_model_data({ Toolname = Entity:FindFirstChildOfClass("Tool") and Entity:FindFirstChildOfClass("Tool").Name or "None" }, Key)
                 end
                 Seen[Key] = true
             end
@@ -2229,22 +2217,6 @@ task.spawn(function()
     while true do
         task.wait(0.8)
         Module.Function:Cache()
-
-        local Removing = Library.Flags["Remove Grass"]
-        local Current  = memory.readf32(Workspace.Terrain, Offsets.Terrain.GrassLength)
-
-        if Removing then
-            if Module.Original.GrassLength == nil and Current > -1 then
-                Module.Original.GrassLength = Current
-            end
-            if Current == -1 then
-            elseif Current > -1 then
-                memory.writef32(Workspace.Terrain, Offsets.Terrain.GrassLength, -1)
-            end
-        elseif Module.Original.GrassLength ~= nil then
-            memory.writef32(Workspace.Terrain, Offsets.Terrain.GrassLength, Module.Original.GrassLength)
-            Module.Original.GrassLength = nil
-        end
     end
 end)
 RunService.PostLocal:Connect(Module.Function.PostLocal)
