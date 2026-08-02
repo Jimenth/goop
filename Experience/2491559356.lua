@@ -15,10 +15,12 @@ local Module = {
     
     Stored = {
         Vehicles = {},
+        --[[
         Original = {
             Penetration = setmetatable({}, { __mode = "k" }),
             Speed = setmetatable({}, { __mode = "k" })
         }
+        ]]
     }
 }
 
@@ -40,6 +42,8 @@ TankSection:Separator()
 TankSection:Slider({Name = nil, Flag = "Box Size X", Min = 1, Max = 4, Default = 2, Decimals = .25, Suffix = "x", Callback = function(Value) end})
 TankSection:Slider({Name = nil, Flag = "Box Size Y", Min = 1, Max = 4, Default = 2.5, Decimals = .25, Suffix = "y", Callback = function(Value) end})
 
+--[[
+
 TankSection:Separator()
 
 TankSection:Toggle({Name = "Force Penetration", Flag = "Force Penetration", Default = false, Callback = function(Value) end})
@@ -49,6 +53,8 @@ TankSection:Slider({Name = "Secondary Penetration Multiplier", Flag = "Secondary
 TankSection:Toggle({Name = "Force Speed", Flag = "Force Speed", Default = false, Callback = function(Value) end})
 TankSection:Slider({Name = "Shell Speed Multiplier", Flag = "Shell Speed", Min = 0, Max = 3.6, Default = 1, Decimals = 0.1, Callback = function(Value) end})
 TankSection:Slider({Name = "Secondary Speed Multiplier", Flag = "Secondary Speed", Min = 0, Max = 3.6, Default = 1, Decimals = 0.1, Callback = function(Value) end})
+
+]]
 
 -- // Function \\ --
 
@@ -104,6 +110,8 @@ function Module.Function:GetLocalHull()
         end
     end
 end
+
+--[[
 function Module.Function:ApplyShells(Shells, Enabled, Flag, Value, OriginalStore)
     for _, Shell in Shells:GetChildren() do
         local ValueObject = Shell:FindFirstChild(Value)
@@ -164,6 +172,7 @@ function Module.Function:SetValues(Vehicle)
         end
     end
 end
+]]
 
 function Module.Function:Render()
     if not Library.Flags["Enabled"] then return end
@@ -215,14 +224,18 @@ task.spawn(function()
     while true do
         task.wait(0.8)
         Module.Function:Cache()
-
-        if Library.Flags["Force Penetration"] or Library.Flags["Force Speed"] then
-            local LocalHull = Module.Function:GetLocalHull()
-            if LocalHull then
-                Module.Function:SetValues(LocalHull)
-            end
-        end 
     end
 end)
+
+--[[
+RunService.PostLocal:Connect(function()
+    if Library.Flags["Force Penetration"] or Library.Flags["Force Speed"] then
+        local LocalHull = Module.Function:GetLocalHull()
+        if LocalHull then
+            Module.Function:SetValues(LocalHull)
+        end
+    end 
+end)
+]]
 
 RunService.Render:Connect(function() Module.Function:Render() end)
