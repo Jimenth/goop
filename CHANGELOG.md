@@ -86,4 +86,10 @@ Cursed Tank Simulator - Added
 
 + Primary + Secondary Penetration Multiplier
 + Primary + Secondary Speed Multiplier
+
+Multicrew Tank Combat
+
+> Friendly Vehicles Can No Longer Become Enemy, Vice Versa
+> Improved Convex Hull Performance
+> Fixed Many Invalid Instance Errors
 ```
