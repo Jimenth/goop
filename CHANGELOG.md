@@ -100,4 +100,7 @@ Cursed Tank Simulator
 
 - Removed Force Penetration (DETECTED)
 - Removed Force Speed (DETECTED)
+
++ Hull and Turret Ammunition Module Rendering
++ Improved Bounding Box
 ```
