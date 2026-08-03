@@ -20,6 +20,7 @@ local Module = {
     
     Stored = {
         Game = {},
+        Characters = {},
         Mouse = {X = 0, Y = 0},
         MouseMove = {
             Active = false,
@@ -131,8 +132,27 @@ PlayersSection:Toggle({Name = "Render Wanted", Flag = "Render Wanted", Default =
 
 -- // Function \\ --
 
+function Module.Function:GetCharacterParts(Character)
+    if not Character then
+        return {}, 0
+    end
+    
+    local Parts = {}
+    local Count = 0
+    
+    for _, Child in Character:GetChildren() do
+        if Child:IsA("Part") or Child:IsA("MeshPart") then
+            Count = Count + 1
+            Parts[Count] = Child
+        end
+    end
+    
+    return Parts, Count
+end
+
 function Module.Function:Cache()
     local Stored = Module.Stored.Game
+    local Characters = Module.Stored.Characters or {}
 
     for Identifier, Entry in Stored do
         local Object = Entry.Object
@@ -146,6 +166,14 @@ function Module.Function:Cache()
             if not Health or Health.Value <= 0 or not Object or not Object.Parent or Entry.Model.Name == "CashRegister_Broken" then
                 Stored[Identifier] = nil
             end
+        end
+    end
+
+    for Identifier, Entry in Characters do
+        local Character = Entry.Character
+
+        if not Character or not Character.Parent then
+            Characters[Identifier] = nil
         end
     end
 
@@ -235,6 +263,32 @@ function Module.Function:Cache()
                         Name = Location.Name,
                         Class = "Bank Code Location"
                     }
+                end
+            end
+        end
+    end
+
+    if Library.Flags["Render Wanted"] then
+        for _, Player in Players:GetChildren() do
+            if Player:IsA("Player") and Player ~= LocalPlayer then
+                local Character = Player.Character
+                local Identifier = tostring(Player)
+
+                if Character then
+                    local Existing = Characters[Identifier]
+
+                    if not Existing or Existing.Character ~= Character then
+                        local Parts, Count = Module.Function:GetCharacterParts(Character)
+
+                        Characters[Identifier] = {
+                            Character = Character,
+                            Player = Player,
+                            Parts = Parts,
+                            Count = Count
+                        }
+                    end
+                else
+                    Characters[Identifier] = nil
                 end
             end
         end
@@ -680,8 +734,6 @@ function Module.Function:SolveVehicle()
             NS.Cache.Start = Start and Start:FindFirstChild("GO")
             NS.Cache.CurrentNumber = CurrentNumber and CurrentNumber:FindFirstChild("Number")
             NS.Cache.NumberButtons = ScreenUIBase:FindFirstChild("NumberButtons")
-
-            print("NumbersHack cached")
         end
 
         local Start = NS.Cache.Start
@@ -689,7 +741,6 @@ function Module.Function:SolveVehicle()
         local NumberButtons = NS.Cache.NumberButtons
 
         if not (Start and CurrentNumber and NumberButtons) then
-            print("Missing NumbersHack objects")
             return true
         end
 
@@ -701,8 +752,6 @@ function Module.Function:SolveVehicle()
             end
 
             if not NS.Started then
-                print("Pressing GO")
-
                 NS.Clicking = true
 
                 task.spawn(function()
@@ -723,19 +772,15 @@ function Module.Function:SolveVehicle()
 
         if NS.Stage == "Reading" then
             local Current = Module.Function:GetText(CurrentNumber)
+            local Digit = tonumber(Current)
 
             if not Current or Current == "" then
                 NS.Blank = true
-            elseif NS.Blank then
+            elseif Digit and (NS.Blank or Digit ~= NS.LastDigit) then
+                NS.LastDigit = Digit
                 NS.Blank = false
 
-                local Digit = tonumber(Current)
-                if Digit then
-                    table.insert(NS.Sequence, Digit)
-
-                    print("Collected:", Digit)
-                    print("Count:", #NS.Sequence)
-                end
+                table.insert(NS.Sequence, Digit)
             end
 
             if #NS.Sequence == 6 then
@@ -764,11 +809,8 @@ function Module.Function:SolveVehicle()
             local Button = NumberButtons:FindFirstChild(tostring(Number))
 
             if not Button then
-                print("Missing button:", Number)
                 return true
             end
-
-            print("Pressing:", Number)
 
             NS.Clicking = true
 
@@ -784,7 +826,7 @@ function Module.Function:SolveVehicle()
 
         if NS.Stage == "Waiting" then
             if os.clock() - NS.WaitTime > 0.3 then
-                print("Restarting sequence read")
+                print("Restarting sequenc read")
 
                 NS.Sequence = {}
                 NS.Index = 1
@@ -893,6 +935,9 @@ function Module.Function:SolveVehicle()
             task.spawn(function()
                 mousemoveabs(StartPos.X, StartPos.Y)
 
+                Module.Stored.Mouse.X = StartPos.X
+                Module.Stored.Mouse.Y = StartPos.Y
+
                 task.wait(0.08)
 
                 mouse1press()
@@ -932,24 +977,6 @@ function Module.Function:SolveVehicle()
     return true
 end
 
-function Module.Function:GetCharacterParts(Character)
-    if not Character then
-        return {}, 0
-    end
-    
-    local Parts = {}
-    local Count = 0
-    
-    for _, Child in Character:GetChildren() do
-        if Child:IsA("Part") or Child:IsA("MeshPart") then
-            Count = Count + 1
-            Parts[Count] = Child
-        end
-    end
-    
-    return Parts, Count
-end
-
 function Module.Function.Render()
     for _, Entry in Module.Stored.Game do
         if Library.Flags["Render ".. Entry.Class] then
@@ -972,16 +999,14 @@ function Module.Function.Render()
     end
 
     if Library.Flags["Render Wanted"] then
-        for _, Player in Players:GetChildren() do
-            if not Player then continue end
-            if Player == LocalPlayer then continue end
+        for _, Instance in pairs(Module.Stored.Characters) do
+            if not Instance.Character then continue end
+            if Instance.Player == LocalPlayer then continue end
+            local Player = Instance.Player
 
             if Player:FindFirstChild("Is_Wanted") then
-                local Character = Player.Character
-                local Parts, Count = Module.Function:GetCharacterParts(Character)
-
-                if Count > 0 then
-                    local BoundingBox = Bounding.GetBoundingBox(Parts)
+                if Instance.Count > 0 then
+                    local BoundingBox = Bounding.GetBoundingBox(Instance.Parts)
                     if BoundingBox then
                         local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
                         local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
