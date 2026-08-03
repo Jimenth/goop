@@ -34,7 +34,7 @@ local Convex = {
     }
 }
 
-local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+local Library = loadfile("Source.lua")()
 
 local Vector2New = Vector2.new
 local Vector3New = Vector3.new
@@ -269,6 +269,78 @@ function Module.Function:GetVehicleTeam(Vehicle)
     return Module.Function:GetPlayerTeam(OwnerName)
 end
 
+function Module.Function:CacheVehicle(Vehicle)
+    if Vehicle.Name == "DONOT" or not Vehicle:IsA("Model") or not Vehicle.PrimaryPart then return end
+
+    local Vehicles = Module.Stored.Vehicles
+    local Identifier = tostring(Vehicle)
+
+    if not Vehicles[Identifier] then
+        local DamageModules = Vehicle:FindFirstChild("DamageModules")
+
+        Vehicles[Identifier] = {
+            Vehicle = Vehicle,
+            PrimaryPart = Vehicle.PrimaryPart,
+            Groups = nil,
+            Occupied = false,
+            Team = Module.Function:GetVehicleTeam(Vehicle)
+        }
+
+        task.delay(1, function()
+            local Data = Vehicles[Identifier]
+            if not Data or Data.Groups then
+                return
+            end
+
+            if not (DamageModules and DamageModules.Parent) then
+                return
+            end
+
+            local Groups = {}
+
+            for _, DamageModule in DamageModules:GetChildren() do
+                if not (DamageModule:IsA("Model") or DamageModule:IsA("Folder")) then
+                    continue
+                end
+
+                local ModuleName = DamageModule.Name:lower()
+
+                if ModuleName == "engine" then
+                    local EnginePart = DamageModule:FindFirstChild("Engine")
+
+                    if EnginePart then
+                        Groups[#Groups + 1] = {
+                            Type = "Engine",
+                            Parts = {EnginePart}
+                        }
+                    end
+
+                elseif ModuleName:find("ammo") or ModuleName:find("atgm") then
+                    local Parts = {}
+
+                    for _, Child in DamageModule:GetChildren() do
+                        if Child:IsA("BasePart")
+                            and self:NotNumerical(Child.Name)
+                            and not Child.Name:find("cube") then
+
+                            Parts[#Parts + 1] = Child
+                        end
+                    end
+
+                    if #Parts > 0 then
+                        Groups[#Groups + 1] = {
+                            Type = "Ammo",
+                            Parts = Parts
+                        }
+                    end
+                end
+            end
+
+            Data.Groups = Groups
+        end)
+    end
+end
+
 function Module.Function:VehicleCache()
     if not Module.Game.Vehicles then
         return
@@ -283,84 +355,47 @@ function Module.Function:VehicleCache()
     end
 
     for _, Vehicle in Module.Game.Vehicles:GetChildren() do
-        if Vehicle.Name == "DONOT" or not Vehicle:IsA("Model") or not Vehicle.PrimaryPart then continue end
-
-        local Identifier = tostring(Vehicle)
-
-        if not Vehicles[Identifier] then
-            local DamageModules = Vehicle:FindFirstChild("DamageModules")
-
-            Vehicles[Identifier] = {
-                Vehicle = Vehicle,
-                PrimaryPart = Vehicle.PrimaryPart,
-                Groups = nil,
-                Occupied = false,
-                Team = Module.Function:GetVehicleTeam(Vehicle)
-            }
-
-            task.delay(1, function()
-                local Data = Vehicles[Identifier]
-                if not Data or Data.Groups then
-                    return
-                end
-
-                if not (DamageModules and DamageModules.Parent) then
-                    return
-                end
-
-                local Groups = {}
-
-                for _, DamageModule in DamageModules:GetChildren() do
-                    if not (DamageModule:IsA("Model") or DamageModule:IsA("Folder")) then
-                        continue
-                    end
-
-                    local ModuleName = DamageModule.Name:lower()
-
-                    if ModuleName == "engine" then
-                        local EnginePart = DamageModule:FindFirstChild("Engine")
-
-                        if EnginePart then
-                            Groups[#Groups + 1] = {
-                                Type = "Engine",
-                                Parts = {EnginePart}
-                            }
-                        end
-
-                    elseif ModuleName:find("ammo") or ModuleName:find("atgm") then
-                        local Parts = {}
-
-                        for _, Child in DamageModule:GetChildren() do
-                            if Child:IsA("BasePart")
-                                and self:NotNumerical(Child.Name)
-                                and not Child.Name:find("cube") then
-
-                                Parts[#Parts + 1] = Child
-                            end
-                        end
-
-                        if #Parts > 0 then
-                            Groups[#Groups + 1] = {
-                                Type = "Ammo",
-                                Parts = Parts
-                            }
-                        end
-                    end
-                end
-
-                Data.Groups = Groups
-            end)
-        end
+        pcall(Module.Function.CacheVehicle, Module.Function, Vehicle)
     end
 end
 
 function Module.Function:OccupiedCache()
     for _, Data in Module.Stored.Vehicles do
-        local Vehicle = Data.Vehicle
+        pcall(function()
+            local Vehicle = Data.Vehicle
 
-        if Vehicle and Vehicle.Parent then
-            Data.Occupied = Vehicle:GetAttribute("Occupied") == "true"
-        end
+            if Vehicle and Vehicle.Parent then
+                Data.Occupied = Vehicle:GetAttribute("Occupied") == "true"
+            end
+        end)
+    end
+end
+
+function Module.Function:CacheDrone(Drone)
+    if not Library.Flags["Render Drones"] then return end
+    if not (Drone:IsA("Model") and Drone.Name:lower():find("drone", 1, true)) then return end
+
+    local Drones = Module.Stored.Drones
+    local Identifier = tostring(Drone)
+
+    if not Drones[Identifier] then
+        local DroneModel = Drone:FindFirstChild("Drone")
+        if not DroneModel then return end
+
+        local DronePart = DroneModel:IsA("Model") and DroneModel:FindFirstChild("Drone")
+        if not DronePart or not DronePart:IsA("BasePart") then return end
+
+        local OwnerTag = Drone:FindFirstChild("OwnershipTag")
+        if not OwnerTag then return end
+
+        Drones[Identifier] = {
+            Model = Drone,
+            Part = DronePart,
+            OwnerTag = OwnerTag,
+            Name = Drone.Name,
+            Class = "Drone",
+            Occupied = Drone:GetAttribute("Occupied") == true
+        }
     end
 end
 
@@ -374,31 +409,7 @@ function Module.Function:DroneCache()
     end
 
     for _, Drone in Module.Game.Placed:GetChildren() do
-        if Library.Flags["Render Drones"] then
-            if Drone:IsA("Model") and Drone.Name:lower():find("drone", 1, true) then
-                local Identifier = tostring(Drone)
-
-                if not Drones[Identifier] then
-                    local DroneModel = Drone:FindFirstChild("Drone")
-                    if not DroneModel then continue end
-
-                    local DronePart = DroneModel:IsA("Model") and DroneModel:FindFirstChild("Drone")
-                    if not DronePart or not DronePart:IsA("BasePart") then continue end
-
-                    local OwnerTag = Drone:FindFirstChild("OwnershipTag")
-                    if not OwnerTag then continue end
-
-                    Drones[Identifier] = {
-                        Model = Drone,
-                        Part = DronePart,
-                        OwnerTag = OwnerTag,
-                        Name = Drone.Name,
-                        Class = "Drone",
-                        Occupied = Drone:GetAttribute("Occupied") == true
-                    }
-                end
-            end
-        end
+        pcall(Module.Function.CacheDrone, Module.Function, Drone)
     end
 end
 
@@ -409,23 +420,25 @@ function Module.Function:ScanArmor()
     local Cache = Module.Stored.Armor
 
     for _, Vehicle in ipairs(Module.Game.Vehicles:GetChildren()) do
-        if Vehicle.Name == "DONOT" or Vehicle.ClassName ~= "Model" then continue end
+        pcall(function()
+            if Vehicle.Name == "DONOT" or Vehicle.ClassName ~= "Model" then return end
 
-        local Values = Cache[Vehicle]
-        if not Values then
-            Values = {}
-            for _, Item in ipairs(Vehicle:GetDescendants()) do
-                if Item:IsA("NumberValue") and Item.Name == "ArmourValue" then
-                    Values[Item] = Item.Value
+            local Values = Cache[Vehicle]
+            if not Values then
+                Values = {}
+                for _, Item in ipairs(Vehicle:GetDescendants()) do
+                    if Item:IsA("NumberValue") and Item.Name == "ArmourValue" then
+                        Values[Item] = Item.Value
+                    end
+                end
+                Cache[Vehicle] = Values
+            end
+            for ValueObject, _ in pairs(Values) do
+                if ValueObject.Parent and ValueObject.Value ~= 0 then
+                    ValueObject.Value = 0
                 end
             end
-            Cache[Vehicle] = Values
-        end
-        for ValueObject, _ in pairs(Values) do
-            if ValueObject.Parent and ValueObject.Value ~= 0 then
-                ValueObject.Value = 0
-            end
-        end
+        end)
     end
 
     for Vehicle in pairs(Cache) do
@@ -448,6 +461,109 @@ function Module.Function:RestoreArmor()
     end
 end
 
+function Module.Function:RenderVehicle(Data, HumanoidRootPart, CenterX, CenterY, Half)
+    local Vehicle = Data.Vehicle
+    local PrimaryPart = Data.PrimaryPart
+
+    if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then return end
+
+    if is_team_check_active() then
+        if LocalPlayer.Team and LocalPlayer.Team.Parent and Data.Team == LocalPlayer.Team.Name then
+            return
+        end
+    end
+
+    local Position = PrimaryPart.CFrame.Position
+
+    local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
+    if not OnScreen then return end
+
+    local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
+    local Distance
+
+    if HumanoidRootPart then
+        Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - Position) / 2.78125)
+    else
+        Distance = 0
+    end
+
+    local NameWidth = typeof(Name) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
+    local DistanceWidth = typeof(Distance) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
+    local Padding = Name and Distance and 4 or 0
+
+    local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
+    local Y = Screen.Y
+
+    if Name then
+        local NameColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
+        DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Verdana")
+        X = X + NameWidth + Padding
+    end
+
+    if Distance then
+        local DistanceColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
+        DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Verdana")
+    end
+
+    local Groups = Data.Groups
+    if not (Library.Flags["Render Modules"] and Groups) then return end
+    if MathAbs(Screen.X - CenterX) > Half or MathAbs(Screen.Y - CenterY) > Half then return end
+
+    for _, Group in ipairs(Groups) do
+        local GroupType = Group.Type
+
+        local Enabled = (GroupType == "Engine" and Library.Flags["Vehicle Engine"]) or (GroupType == "Ammo" and Library.Flags["Vehicle Ammo"])
+        if not Enabled then continue end
+
+        local Color = GroupType == "Engine" and Library.Flags["Engine Color"] or Library.Flags["Ammo Color"]
+
+        local PointCount = 0
+        for _, Part in ipairs(Group.Parts) do
+            if Part and Part.Parent then
+                PointCount = self:ProjectPartCorners(Part, PointCount)
+            end
+        end
+
+        if PointCount == 0 then continue end
+        Convex.Static.HWMPoints = self:TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
+
+        local Size = self:CalculateConvexHull(Convex.Scratch.Points, PointCount, Convex.Scratch.Hull)
+        if Size == 0 then continue end
+
+        local Verts = self:BuildHullVerts(Convex.Scratch.Hull, Size)
+        self:DrawPolygon(Verts, Size, Color.Color, Color.Alpha)
+        self:DrawOutline(Verts, Size, Color.Color, Color.Alpha, 1)
+    end
+end
+
+function Module.Function:RenderDrone(Data, HumanoidRootPart)
+    local Part = Data.Part
+    if not Part or not Part.Parent then return end
+
+    if is_team_check_active() then
+        local Team
+        if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
+            Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
+        end
+        if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
+            return
+        end
+    end
+
+    local Position = Part.CFrame.Position
+
+    local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
+    if not OnScreen then return end
+
+    local DroneText = "Drone"
+    if HumanoidRootPart then
+        local Distance = vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125
+        DroneText = string.format("Drone [%.0f]", Distance)
+    end
+
+    DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Verdana")
+end
+
 function Module.Function:Render()
     if not LocalPlayer then return end
 
@@ -461,108 +577,13 @@ function Module.Function:Render()
         local Half = Library.Flags["Field of View"].Value * 0.5
 
         for _, Data in pairs(Module.Stored.Vehicles) do
-            local Vehicle = Data.Vehicle
-            local PrimaryPart = Data.PrimaryPart
-
-            if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then continue end
-
-            if is_team_check_active() then
-                if LocalPlayer.Team and LocalPlayer.Team.Parent and Data.Team == LocalPlayer.Team.Name then
-                    continue
-                end
-            end
-
-            local Position = PrimaryPart.CFrame.Position
-
-            local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
-            if not OnScreen then continue end
-
-            local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
-            local Distance 
-
-            if HumanoidRootPart then
-                Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - Position) / 2.78125)
-            else
-                Distance = 0
-            end
-
-            local NameWidth = typeof(Name) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
-            local DistanceWidth = typeof(Distance) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
-            local Padding = Name and Distance and 4 or 0
-
-            local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
-            local Y = Screen.Y
-
-            if Name then
-                local NameColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
-                DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Verdana")
-                X = X + NameWidth + Padding
-            end
-
-            if Distance then
-                local DistanceColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
-                DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Verdana")
-            end
-
-            local Groups = Data.Groups
-            if not (Library.Flags["Render Modules"] and Groups) then continue end
-            if MathAbs(Screen.X - CenterX) > Half or MathAbs(Screen.Y - CenterY) > Half then continue end
-
-            for _, Group in ipairs(Groups) do
-                local GroupType = Group.Type
-
-                local Enabled = (GroupType == "Engine" and Library.Flags["Vehicle Engine"]) or (GroupType == "Ammo" and Library.Flags["Vehicle Ammo"])
-                if not Enabled then continue end
-
-                local Color = GroupType == "Engine" and Library.Flags["Engine Color"] or Library.Flags["Ammo Color"]
-
-                local PointCount = 0
-                for _, Part in ipairs(Group.Parts) do
-                    if Part and Part.Parent then
-                        PointCount = self:ProjectPartCorners(Part, PointCount)
-                    end
-                end
-
-                if PointCount == 0 then continue end
-                Convex.Static.HWMPoints = self:TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
-
-                local Size = self:CalculateConvexHull(Convex.Scratch.Points, PointCount, Convex.Scratch.Hull)
-                if Size == 0 then continue end
-
-                local Verts = self:BuildHullVerts(Convex.Scratch.Hull, Size)
-                self:DrawPolygon(Verts, Size, Color.Color, Color.Alpha)
-                self:DrawOutline(Verts, Size, Color.Color, Color.Alpha, 1)
-            end
+            pcall(Module.Function.RenderVehicle, Module.Function, Data, HumanoidRootPart, CenterX, CenterY, Half)
         end
     end
 
     if Library.Flags["Render Drones"] then
         for _, Data in pairs(Module.Stored.Drones) do
-            local Part = Data.Part
-            if not Part or not Part.Parent then continue end
-
-            if is_team_check_active() then
-                local Team
-                if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
-                    Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
-                end
-                if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
-                    continue
-                end
-            end
-
-            local Position = Part.CFrame.Position
-
-            local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
-            if not OnScreen then continue end
-
-            local DroneText = "Drone"
-            if HumanoidRootPart then
-                local Distance = vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125
-                DroneText = string.format("Drone [%.0f]", Distance)
-            end
-
-            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Verdana")
+            pcall(Module.Function.RenderDrone, Module.Function, Data, HumanoidRootPart)
         end
     end
 end
@@ -570,9 +591,9 @@ end
 task.spawn(function()
     while true do
         task.wait(0.5)
-        Module.Function:VehicleCache()
-        Module.Function:DroneCache()
-        Module.Function:OccupiedCache()
+        pcall(Module.Function.VehicleCache, Module.Function)
+        pcall(Module.Function.DroneCache, Module.Function)
+        pcall(Module.Function.OccupiedCache, Module.Function)
     end
 end)
 
@@ -580,7 +601,7 @@ task.spawn(function()
     while true do
         task.wait(5)
         if Library.Flags["Disable Armor"] then
-            Module.Function:ScanArmor()
+            pcall(Module.Function.ScanArmor, Module.Function)
         end
     end
 end)
@@ -590,5 +611,5 @@ Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigW
 Library:Watermark("Goop")
 
 RunService.Render:Connect(function()
-    Module.Function:Render()
+    pcall(Module.Function.Render, Module.Function)
 end)
