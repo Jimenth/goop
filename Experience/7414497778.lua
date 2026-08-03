@@ -486,8 +486,8 @@ function Module.Function:Render()
                 Distance = 0
             end
 
-            local NameWidth = Name and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
-            local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
+            local NameWidth = typeof(Name) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
+            local DistanceWidth = typeof(Distance) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
             local Padding = Name and Distance and 4 or 0
 
             local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
