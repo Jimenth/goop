@@ -83,7 +83,6 @@ local Library do
                 {"Visitor.ttf",           "Visitor.json",           "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Visitor.ttf"},
                 {"SmallestPixel.ttf",     "SmallestPixel.json",     "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/SmallestPixel.ttf"},
                 {"Windows-XP-Tahoma.ttf", "Windows-XP-Tahoma.json", "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Windows-XP-Tahoma.ttf"},
-                {"Consolas-Bold.ttf",     "Consolas-Bold.json",     "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Consolas-Bold.ttf"},
                 {"Monaco.ttf",            "Monaco.json",            "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Monaco.ttf"},
             },
         }
@@ -151,6 +150,8 @@ local Library do
             fs.make(Folder)
         end
     end
+
+    Fonts.Load(Library.Folders.Fonts)
 
     local function LoadFonts()
         for _, FontData in pairs(Library.Fonts.Stored) do
