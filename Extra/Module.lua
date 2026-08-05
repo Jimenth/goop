@@ -1,5 +1,5 @@
 --[[
-    Extra.lua
+    Module.lua
 
     Extends the memory-backed Instance API with additional Roblox-accurate
     properties and methods that the environment doesn't expose natively.
