@@ -1,6 +1,6 @@
-# Extra.lua — API Reference
+# Module.lua — API Reference
 
-Everything `Extra.lua` adds on top of Severe. Load it once with `loadfile("Extra.lua")()`.
+Everything `Module.lua` adds on top of Severe. Load it once with `loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()`.
 
 - **Access** column: `R` = readable, `W` = writable. `R` only means read-only.
 - Properties are declared per class; a class inheriting the member (e.g. `TextLabel` from `GuiObject`) gets it too.
