@@ -20,7 +20,7 @@
     drivers pick it up automatically.
 ]]
 
-local Offsets = loadfile("Offsets.lua")()
+local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
 assert(Offsets, "Module: failed to load offsets from Offsets.lua")
 for _, Namespace in {
     "Humanoid", "ClickDetector", "Clothing", "DataModel", "DragDetector", "Workspace", "Terrain",
