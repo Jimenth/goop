@@ -18,7 +18,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+task.wait(2)
 local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+task.wait(2)
 local Tween = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Tween.lua"))()
 
 local Roles = {
@@ -132,7 +134,7 @@ function Module.Function:Render()
     if Library.Flags["Render Gun"] and Module.Stored.Gun then
         local Screen, OnScreen = Camera:WorldToScreenPoint(Module.Stored.Gun.Position)
         if OnScreen then
-            DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Proggy")
+            DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Verdana")
         end
     end
 
@@ -151,7 +153,7 @@ function Module.Function:Render()
                         local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
                         local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
 
-                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Color, Alpha, Role, true, "Proggy")
+                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Color, Alpha, Role, true, "Verdana")
                     end
                 end
             end
@@ -211,16 +213,7 @@ task.spawn(function()
 
                 if Library.Flags["Full Bag Suicide"] then
                     if tonumber(memory.readstring(LocalPlayer.PlayerGui.MainGUI.Game.CoinBags.Container.Coin.CurrencyFrame.Icon.Coins, Offsets.GuiObject.Text)) == 40 then
-                        task.wait(0.5)
-                        keypress(0x1B)
-                        task.wait(0.5)
-                        keypress(0x52)
-                        task.wait(0.8)
-                        keypress(0x0D)
-                        task.wait(0.3)
-                        keypress(0x0D)
-                        task.wait(0.3)
-                        keypress(0x0D)
+                        print("Yo dis not finished ngl")
                     end
                 end
 
