@@ -81,9 +81,29 @@ local Module = {
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 task.wait(2)
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
 task.wait(2)
-local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
+
+function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
+    local Center = BoxCFrame.Position
+    local HX, HY, HZ = BoxSize.X * 0.5, BoxSize.Y * 0.5, BoxSize.Z * 0.5
+    local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
+    local OnScreen = false
+    for SX = -1, 1, 2 do
+        for SY = -1, 1, 2 do
+            for SZ = -1, 1, 2 do
+                local Screen, Visible = Camera:WorldToScreenPoint(Vector3.new(Center.X + SX * HX, Center.Y + SY * HY, Center.Z + SZ * HZ))
+                if Screen.X < MinX then MinX = Screen.X end
+                if Screen.X > MaxX then MaxX = Screen.X end
+                if Screen.Y < MinY then MinY = Screen.Y end
+                if Screen.Y > MaxY then MaxY = Screen.Y end
+                if Visible then OnScreen = true end
+            end
+        end
+    end
+    if not OnScreen then return nil end
+    return Vector2.new(MinX, MinY), Vector2.new(MaxX - MinX, MaxY - MinY)
+end
 
 -- // Interface \\ --
 
@@ -303,44 +323,13 @@ function Module.Function:UpdateInput()
     Module.Stored.Mouse.Y = Mouse.Y
 end
 
-function Module.Function:GetAbsolutePosition(Object)
-    local X = memory.readf32(Object, Offsets.GuiBase2D.AbsolutePosition)
-    local Y = memory.readf32(Object, Offsets.GuiBase2D.AbsolutePosition + 4)
-    return {X = X, Y = Y}
-end
-
-function Module.Function:GetAbsoluteSize(Object)
-    local X = memory.readf32(Object, Offsets.GuiBase2D.AbsoluteSize)
-    local Y = memory.readf32(Object, Offsets.GuiBase2D.AbsoluteSize + 4)
-    return {X = X, Y = Y}
-end
-
 function Module.Function:GetCenterPosition(Object)
-    local Position  = Module.Function:GetAbsolutePosition(Object)
-    local Size = Module.Function:GetAbsoluteSize(Object)
+    local Position = Object.AbsolutePosition
+    local Size = Object.AbsoluteSize
     return {
         X = Position.X + Size.X * 0.5,
         Y = Position.Y + Size.Y * 0.5,
     }
-end
-
-function Module.Function:GetColor3(Object)
-    local Color = memory.readvector(Object, Offsets.GuiObject.TextColor3)
-    return Color
-end
-
-function Module.Function:GetText(Object)
-    local Text = memory.readstring(Object, Offsets.GuiObject.Text)
-    return Text
-end
-
-function Module.Function:GetRotation(Object)
-    return memory.readf32(Object, Offsets.GuiObject.Rotation)
-end
-
-function Module.Function:GetVisible(Object)
-    local Visible = memory.readu8(Object, Offsets.GuiObject.Visible)
-    return Visible == 1
 end
 
 function Module.Function:SmoothMoveMouse(TargetX, TargetY, Steps)
@@ -406,7 +395,7 @@ function Module.Function:SolveLockpick()
 
     local LockpickMenu = Menus:FindFirstChild("Lockpick")
 
-    if not LockpickMenu or not Module.Function:GetVisible(LockpickMenu) then
+    if not LockpickMenu or not LockpickMenu.Visible then
         State.Picking = false
         State.Current.Indexed = 1
         State.Cache = {}
@@ -516,7 +505,7 @@ function Module.Function:SolveATM()
 
     local Hacking = Frame:FindFirstChild("Hacking")
 
-    if not (Hacking and Module.Function:GetVisible(Hacking)) then
+    if not (Hacking and Hacking.Visible) then
         State.Positioned = false
         State.Previous.Target = nil
         State.Cache = {}
@@ -551,7 +540,7 @@ function Module.Function:SolveATM()
         end
     end
 
-    local Target = Module.Function:GetText(Selecting)
+    local Target = Selecting.Text
 
     if not Target or Target == "" then
         return true
@@ -573,10 +562,10 @@ function Module.Function:SolveATM()
         if List then
             for _, Label in pairs(List:GetChildren()) do
                 if Label.ClassName == "TextLabel" then
-                    local Color = Module.Function:GetColor3(Label)
+                    local Color = Label.TextColor3
 
                     if Color and Color.x == 0 and Color.y == 0 and Color.z == 0 then
-                        Textt = Module.Function:GetText(Label)
+                        Textt = Label.Text
 
                         break
                     end
@@ -589,7 +578,7 @@ function Module.Function:SolveATM()
         end
     end
 
-    if Textt and Textt == Target and Module.Function:GetVisible(Hacking) then
+    if Textt and Textt == Target and Hacking.Visible then
         mouse1click()
 
         State.Previous.Target = Target
@@ -614,7 +603,7 @@ function Module.Function:SolveJewelry()
 
     local GlassCutting = Menus:FindFirstChild("GlassCutting")
 
-    if not GlassCutting or not Module.Function:GetVisible(GlassCutting) then
+    if not GlassCutting or not GlassCutting.Visible then
         State.Cache = {}
         return false
     end
@@ -666,7 +655,7 @@ function Module.Function:SolveVehicle()
 
     local Crowbar = Menus:FindFirstChild("Crowbar")
 
-    if Crowbar and Module.Function:GetVisible(Crowbar) then
+    if Crowbar and Crowbar.Visible then
         local Frame = Crowbar:FindFirstChild("Main")
         local Game = Frame and Frame:FindFirstChild("Game")
 
@@ -710,7 +699,7 @@ function Module.Function:SolveVehicle()
 
     local NumbersHack = Menus:FindFirstChild("NumbersHack")
 
-    if NumbersHack and Module.Function:GetVisible(NumbersHack) then
+    if NumbersHack and NumbersHack.Visible then
         local NS = State.Numbers
 
         if not NS.VisibleTime then
@@ -777,7 +766,7 @@ function Module.Function:SolveVehicle()
         end
 
         if NS.Stage == "Reading" then
-            local Current = Module.Function:GetText(CurrentNumber)
+            local Current = CurrentNumber.Text
             local Digit = tonumber(Current)
 
             if not Current or Current == "" then
@@ -853,7 +842,7 @@ function Module.Function:SolveVehicle()
 
     if not (
         ConnectWires
-        and Module.Function:GetVisible(ConnectWires)
+        and ConnectWires.Visible
     ) then
         State.Wired = {}
         State.Wiring = false
@@ -876,7 +865,7 @@ function Module.Function:SolveVehicle()
     if Tangled then
         for _, Object in Tangled:GetChildren() do
             if Object.ClassName == "Frame"
-                and Module.Function:GetVisible(Object)
+                and Object.Visible
             then
                 TangledVisible = Object
                 break
@@ -1012,10 +1001,11 @@ function Module.Function.Render()
 
             if Player:FindFirstChild("Is_Wanted") then
                 if Instance.Count > 0 then
-                    local BoundingBox = Bounding.GetBoundingBox(Instance.Parts)
-                    if BoundingBox then
-                        local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
-                        local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
+                    local Box, Size = GetBoundingBox(Instance.Parts)
+                    local Position, ScreenSize = Module.Function:WorldBoxToScreen(Box, Size)
+                    if Position and ScreenSize then
+                        local CenterX = Position.X + ScreenSize.X * 0.5
+                        local BottomY = Position.Y + ScreenSize.Y + 1
 
                         DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Library.Flags["Wanted Color"].Color, Library.Flags["Wanted Color"].Alpha, "WANTED", true, "Pixel")
                     end
