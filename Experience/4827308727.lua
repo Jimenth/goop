@@ -1811,34 +1811,18 @@ end
 
 Module.Game.Entities = (function() for _, m in Workspace:GetChildren() do if m:IsA("Model") and m.Name ~= "_weldobjects.temp.others" then return m end end end)()
 
-local gc = luau.load(game:HttpGet("https://raw.githubusercontent.com/Sploiter13/severe/refs/heads/main/gc.luau",true),{debugName = "gc"})()
-task.wait(2)
 local Library = loadfile("Source.lua")()
 
 -- // Interface \\ --
 
 local Window = Library:Window({Name = "Goop | Havoc", Size = Vector2.new(625, 700)})
 
-local WeaponsTab = Window:Page({Name = "Weapons", Columns = 2})
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
-
-local ModSection = WeaponsTab:Section({Name = "Modifiers", Side = 1})
 
 local LootSection = VisualsTab:Section({Name = "Loot & Other", Side = 1})
 local DangerSection = VisualsTab:Section({Name = "Danger", Side = 2})
 
--- // Modifiers Section \\ --
-
-ModSection:Button({ Name = "Remove Recoil", Callback = function() gc.setgc({vPunchBase = 0, hPunchBase = 0}) end })
-ModSection:Button({ Name = "Remove Drop", Callback = function() gc.setgc({vel = 100000}) end })
-ModSection:Button({ Name = "Remove Weight", Callback = function() gc.setgc({weight = 0, aimWeight = 0, unAimWeight = 0}) end })
-ModSection:Button({ Name = "Remove Spread", Callback = function() gc.setgc({spreadReduce = 100}) end })
-
 -- // Loot Section \\ --
-
-LootSection:Button({Name = "Instant Loot", Callback = function() gc.setgc({search_speed = 999, searchSpeed = 999, earchSpeed = 999, searchTime = 0, SearchTime = 0, searchDuration = 0, lootSearchTime = 0, containerSearchTime = 0}) end})
-
-LootSection:Separator()
 
 LootSection:Toggle({Name = "Render Crates", Flag = "Render Crate", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Crate", Flag = "Crate Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 LootSection:Slider({Name = "Maximum Render", Flag = "Crate Render", Min = 0, Max = 1300, Default = 400, Callback = function(Value) end})
@@ -2090,7 +2074,7 @@ function Module.Function:EntityData(Entity, Parts)
         Teamname = "Enemies",
         Toolname = Entity:FindFirstChildOfClass("Tool") and Entity:FindFirstChildOfClass("Tool").Name or "None",
         Whitelisted = false,
-        Archenemies = Players:FindFirstChild(Entity.Name) and false or true,
+        Archenemies = (Entity:GetAttribute("AI") and Entity:GetAttribute("AI") == true) and true or false,
         Aimbot_Part = Parts.Head,
         Aimbot_TP_Part = Parts.Head,
         Triggerbot_Part = Parts.Head,
