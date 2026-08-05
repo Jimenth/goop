@@ -15,7 +15,7 @@ local Module = {
         ATMs = Workspace.ATMs,
         Registers = Workspace.CashRegisters,
         Vehicles = Workspace.BountyVehicles.Vehicles,
-        Bank = Workspace.EnterableBuildings.Bank.Robbery
+        Bank = Workspace.EnterableBuildings.Bank.Robbery,
     },
     
     Stored = {
@@ -80,7 +80,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+task.wait(2)
 local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+task.wait(2)
 local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 
 -- // Interface \\ --
@@ -330,6 +332,10 @@ end
 function Module.Function:GetText(Object)
     local Text = memory.readstring(Object, Offsets.GuiObject.Text)
     return Text
+end
+
+function Module.Function:GetRotation(Object)
+    return memory.readf32(Object, Offsets.GuiObject.Rotation)
 end
 
 function Module.Function:GetVisible(Object)
