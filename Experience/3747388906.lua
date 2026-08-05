@@ -77,7 +77,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+task.wait(2)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(2)
 
 -- // Interface \\ --
 
@@ -709,7 +711,7 @@ function Module.Function.Render()
                     elseif Entry.Class == "Sleeper" then
                         local NameTag = Entry.Model:FindFirstChild("NameTag")
                         local Label = NameTag and NameTag:FindFirstChild("Label")
-                        local Owner = Label and memory.readstring(Label, Offsets.GuiObject.Text)
+                        local Owner = Label and Label.Text
                         Name = (Owner and Owner.. "'s Sleeper" or "Sleeper").. " [".. math.floor(Distance).. "]"
                     elseif Entry.Class == "Flycopter" then
                         local Health = math.floor(tonumber(Entry.Model:GetAttribute("Health")) or 0)
@@ -734,7 +736,7 @@ function Module.Function.Render()
                             local GuiHolder = Timer and Timer:FindFirstChild("GuiHolder")
                             local Label = GuiHolder and GuiHolder:FindFirstChild("Label")
                             local TextLabel = Label and Label:FindFirstChild("TextLabel")
-                            local Remaining = TextLabel and memory.readstring(TextLabel, Offsets.GuiObject.Text)
+                            local Remaining = TextLabel and TextLabel.Text
 
                             Name = Entry.Name.. (Remaining and " (".. Remaining.. ")" or "").. " [".. math.floor(Distance).. "]"
                         else
