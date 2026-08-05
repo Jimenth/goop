@@ -44,11 +44,10 @@ local Module = {
     }
 }
 
-memory.set_write_strength(1e-6)
-task.wait(4)
-
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+task.wait(2)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(2)
 
 -- // Interface \\ --
 
@@ -1058,7 +1057,7 @@ task.spawn(function()
 
                     local Size = Library.Flags["Reach Extension"].Value
 
-                    memory.writef32(Part, Offsets.BasePart.Transparency, 1)
+                    Part.Transparency = 1
                     Part.Size = Vector3.new(Size, Size, Size)
                     Part.CanCollide = false
                 else
@@ -1088,9 +1087,9 @@ task.spawn(function()
         end
 
         if Library.Flags["Remove Screen Effects"] then
-            memory.writeu8(ScreenEffects, Offsets.GuiObject.Visible, 0)
+            ScreenEffects.Visible = false
         else
-            memory.writeu8(ScreenEffects, Offsets.GuiObject.Visible, 1)
+            ScreenEffects.Visible = true
         end
 
 		Module.Function:Cache()
@@ -1401,9 +1400,9 @@ RunService.Render:Connect(function()
 
     if Module.Stored.Zoom then
         Restored = false
-        memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Library.Flags["Zoom Amount"].Value))
+        Camera.FieldOfView = Library.Flags["Zoom Amount"].Value
     elseif not Restored then
-        memory.writef32(Camera, Offsets.Camera.FieldOfView, math.rad(Module.Stored.Original.FieldOfView))
+        Camera.FieldOfView = Module.Stored.Original.FieldOfView
         Restored = true
     end
     
