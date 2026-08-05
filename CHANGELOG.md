@@ -113,3 +113,10 @@ Havoc
 + Mine ESP
 + Extraction ESP
 ```
+
+8/4/26
+```
+Havoc
+
+- Removed Modifiers which Require Garbage Collector
+```
