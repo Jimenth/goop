@@ -1811,7 +1811,7 @@ end
 
 Module.Game.Entities = (function() for _, m in Workspace:GetChildren() do if m:IsA("Model") and m.Name ~= "_weldobjects.temp.others" then return m end end end)()
 
-local Library = loadfile("Source.lua")()
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 
 -- // Interface \\ --
 
