@@ -20,7 +20,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+task.wait(2)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(2)
 
 -- // Interface \\ --
 
@@ -40,16 +42,6 @@ Automation:Dropdown({Name = "Loadout Option", Flag = "Loadout Option", Options =
 
 -- // Function \\ --
 
-function Module.Function:GetText(Object)
-    local Text = memory.readstring(Object, Offsets.GuiObject.Text)
-    return Text
-end
-
-function Module.Function:GetVisible(Object)
-    local Visible = memory.readu8(Object, Offsets.GuiObject.Visible)
-    return Visible == 1
-end
-
 function Module.Function:GetCompletion()
     local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui")
     if not PlayerGui then return 0 end
@@ -67,7 +59,7 @@ function Module.Function:GetCompletion()
     local Progress = Completion:FindFirstChild("BarProgressAmount")
     if not Progress then return 0 end
 
-    local Percentage = tonumber(Module.Function:GetText(Progress):match("%d+")) or 0
+    local Percentage = tonumber(Progress.Text:match("%d+")) or 0
     return Percentage or 0
 end
 
@@ -82,7 +74,7 @@ function Module.Function:GetRebirthCost()
     local Label = LocalPlayer.PlayerGui.UI.Container.HUD.Menu.HUD.Rebirths.RebirthButton.Rebirth.Main.TextLabel
     if not Label or not Label:IsA("TextLabel") then return nil end
 
-    local Text = Module.Function:GetText(Label)
+    local Text = Label.Text
     if not Text or Text == "" then return nil end
 
     local Number, Suffix = Text:match("-%s*([%d%.]+)%s*(%a?)")
@@ -138,27 +130,9 @@ function Module.Function:IsPriority(Name)
     return false
 end
 
-function Module.Function:SetPosition(Object, Target)
-    if not Object or not Object:IsA("BasePart") then print("Setposition broke G") end
-    if not Target or not Target:IsA("BasePart") then print("Setposition broke G") end
-    Object.Position = Target.Position + vector.create(0.2, 0.2, 0.2)
-end
-
-function Module.Function:GetAbsolutePosition(Object)
-    local X = memory.readf32(Object, Offsets.GuiBase2D.AbsolutePosition)
-    local Y = memory.readf32(Object, Offsets.GuiBase2D.AbsolutePosition + 4)
-    return {X = X, Y = Y}
-end
-
-function Module.Function:GetAbsoluteSize(Object)
-    local X = memory.readf32(Object, Offsets.GuiBase2D.AbsoluteSize)
-    local Y = memory.readf32(Object, Offsets.GuiBase2D.AbsoluteSize + 4)
-    return {X = X, Y = Y}
-end
-
 function Module.Function:GetCenterPosition(Object)
-    local Position  = Module.Function:GetAbsolutePosition(Object)
-    local Size = Module.Function:GetAbsoluteSize(Object)
+    local Position = Object.AbsolutePosition
+    local Size = Object.AbsoluteSize
     return {
         X = Position.X + Size.X * 0.5,
         Y = Position.Y + Size.Y * 0.5,
