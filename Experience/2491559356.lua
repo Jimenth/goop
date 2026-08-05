@@ -26,7 +26,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
-local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
+task.wait(2)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(2)
 
 -- // Convex Buffers & Locals \\ --
 
@@ -50,6 +52,34 @@ local Convex = {
     }
 }
 
+function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
+    local Center = BoxCFrame.Position
+    local HX, HY, HZ = BoxSize.X * 0.5, BoxSize.Y * 0.5, BoxSize.Z * 0.5
+
+    local MinX, MinY = math.huge, math.huge
+    local MaxX, MaxY = -math.huge, -math.huge
+    local OnScreen = false
+
+    for SignX = -1, 1, 2 do
+        for SignY = -1, 1, 2 do
+            for SignZ = -1, 1, 2 do
+                local World = Vector3New(Center.X + SignX * HX, Center.Y + SignY * HY, Center.Z + SignZ * HZ)
+                local Screen, Visible = Camera:WorldToScreenPoint(World)
+                if Screen.X < MinX then MinX = Screen.X end
+                if Screen.X > MaxX then MaxX = Screen.X end
+                if Screen.Y < MinY then MinY = Screen.Y end
+                if Screen.Y > MaxY then MaxY = Screen.Y end
+                if Visible then OnScreen = true end
+            end
+        end
+    end
+
+    if not OnScreen then
+        return nil
+    end
+    return Vector2New(MinX, MinY), Vector2New(MaxX - MinX, MaxY - MinY)
+end
+
 -- // Interface \\ --
 
 local Window = Library:Window({Name = "Goop | Cursed Tank Simulator", Size = Vector2.new(450, 450)})
@@ -60,11 +90,15 @@ local TankSection = MainTab:Section({Name = "Tanks", Side = 1})
 TankSection:Toggle({Name = "Enabled", Flag = "Enabled", Default = false, Callback = function(Value) end})
 TankSection:Toggle({Name = "Render Names", Flag = "Render Names", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 TankSection:Toggle({Name = "Render Box", Flag = "Render Box", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Box", Flag = "Box Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
+
 TankSection:Toggle({Name = "Box Outline", Flag = "Box Outline", Default = false, Callback = function(Value) end})
 TankSection:Separator()
+
 TankSection:Slider({Name = nil, Flag = "Box Size X", Min = 1, Max = 4, Default = 2, Decimals = .25, Suffix = "x", Callback = function(Value) end})
 TankSection:Slider({Name = nil, Flag = "Box Size Y", Min = 1, Max = 4, Default = 2.5, Decimals = .25, Suffix = "y", Callback = function(Value) end})
+
 TankSection:Separator()
+
 TankSection:Toggle({Name = "Render Turret Ammo", Flag = "Render Turret Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Turret Ammo", Flag = "Turret Ammo Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 0.5, Callback = function(Color) end})
 TankSection:Toggle({Name = "Render Hull Ammo", Flag = "Render Hull Ammo", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Hull Ammo", Flag = "Hull Ammo Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 0.5, Callback = function(Color) end})
 
@@ -462,13 +496,13 @@ function Module.Function:Render()
 
         if Library.Flags["Render Box"] or Library.Flags["Render Names"] then
             local BoxParts = Module.Function:GetBoundingParts(Tank)
-            local BoundingBox = #BoxParts > 0 and Bounding.GetBoundingBox(BoxParts) or nil
 
-            if BoundingBox then
-                local Position = Vector2.new(BoundingBox.Position.X, BoundingBox.Position.Y)
-                local Size = Vector2.new(BoundingBox.Size.X, BoundingBox.Size.Y)
+            if #BoxParts > 0 then
+                local BoxCFrame, BoxSize = GetBoundingBox(BoxParts)
+                local Position, Size = Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
 
-                if Library.Flags["Render Box"] then
+                if Position then
+                    if Library.Flags["Render Box"] then
                     local BoxColor = Library.Flags["Box Color"].Color
                     local BoxAlpha = Library.Flags["Box Color"].Alpha
 
@@ -482,9 +516,10 @@ function Module.Function:Render()
                     end
                 end
 
-                if Library.Flags["Render Names"] then
-                    local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
-                    DrawingImmediate.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Name, true, "Verdana")
+                    if Library.Flags["Render Names"] then
+                        local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
+                        DrawingImmediate.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Name, true, "Verdana")
+                    end
                 end
             end
         end
