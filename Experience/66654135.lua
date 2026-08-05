@@ -6,7 +6,6 @@ local Players = game:GetService("Players")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
-local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 local Module = {
     Function = {},
     
@@ -19,9 +18,10 @@ local Module = {
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
 task.wait(2)
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
 task.wait(2)
-local Tween = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Tween.lua"))()
+
+local TweenService = _G.TweenService
 
 local Roles = {
     Knife = {"Murderer", Color3.fromRGB(255, 0, 0), 1},
@@ -49,7 +49,7 @@ RenderGun:ColorPicker({ Name = "Gun Color", Flag = "Gun Color", Default = Color3
 -- // Functions \\ --
 
 function Module.Function:GetMap()
-    for _, Map in ipairs(Workspace:GetChildren()) do
+    for _, Map in Workspace:GetChildren() do
         if Map:IsA("Model") and Map:FindFirstChild("CoinContainer") then
             return Map
         end
@@ -79,7 +79,7 @@ function Module.Function:GetClosestCoin(CharacterPosition)
     local ClosestCoin = nil
     local ClosestDistance = math.huge
 
-    for _, Coin in ipairs(Coins:GetChildren()) do
+    for _, Coin in Coins:GetChildren() do
         if Coin and Coin:FindFirstChild("CoinVisual") and Coin:FindFirstChild("TouchInterest") then
             local Distance = vector.magnitude(Coin.Position - CharacterPosition)
             if Distance < ClosestDistance then
@@ -90,20 +90,6 @@ function Module.Function:GetClosestCoin(CharacterPosition)
     end
 
     return ClosestCoin
-end
-
-function Module.Function:GetCharacterParts(Character)
-    local Parts = {}
-    local Count = 0
-    
-    for Index, Child in Character:GetChildren() do
-        if Child:IsA("Part") or Child:IsA("MeshPart") then
-            Count = Count + 1
-            Parts[Count] = Child
-        end
-    end
-    
-    return Parts, Count
 end
 
 function Module.Function:CheckRole(Player)
@@ -130,11 +116,29 @@ function Module.Function:CheckRole(Player)
     return nil, nil
 end
 
+function Module.Function:WorldBoxToScreen(Center, Size)
+    local HalfX, HalfY, HalfZ = Size.X / 2, Size.Y / 2, Size.Z / 2
+    local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
+    local OnScreen = false
+    for _, Corner in {
+        Vector3.new(-HalfX, -HalfY, -HalfZ), Vector3.new(-HalfX, -HalfY, HalfZ),
+        Vector3.new(-HalfX,  HalfY, -HalfZ), Vector3.new(-HalfX,  HalfY, HalfZ),
+        Vector3.new( HalfX, -HalfY, -HalfZ), Vector3.new( HalfX, -HalfY, HalfZ),
+        Vector3.new( HalfX,  HalfY, -HalfZ), Vector3.new( HalfX,  HalfY, HalfZ),
+    } do
+        local Screen, Visible = Camera:WorldToScreenPoint(Center + Corner)
+        MinX, MaxX = math.min(MinX, Screen.X), math.max(MaxX, Screen.X)
+        MinY, MaxY = math.min(MinY, Screen.Y), math.max(MaxY, Screen.Y)
+        if Visible then OnScreen = true end
+    end
+    return MinX, MinY, MaxX, MaxY, OnScreen
+end
+
 function Module.Function:Render()
     if Library.Flags["Render Gun"] and Module.Stored.Gun then
         local Screen, OnScreen = Camera:WorldToScreenPoint(Module.Stored.Gun.Position)
         if OnScreen then
-            DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Verdana")
+            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Verdana")
         end
     end
 
@@ -145,15 +149,13 @@ function Module.Function:Render()
             local Role, Color, Alpha = Module.Function:CheckRole(Player)
             if Role then
                 local Character = Player.Character
-                local Parts, Count = Module.Function:GetCharacterParts(Character)
-
-                if Count > 0 then
-                    local BoundingBox = Bounding.GetBoundingBox(Parts)
-                    if BoundingBox then
-                        local CenterX = BoundingBox.Position.X + BoundingBox.Size.X * 0.5
-                        local BottomY = BoundingBox.Position.Y + BoundingBox.Size.Y + 1
-
-                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Color, Alpha, Role, true, "Verdana")
+                local Box, Size = Character:GetBoundingBox()
+                if Size.Y > 0 then
+                    local MinX, MinY, MaxX, MaxY, OnScreen = Module.Function:WorldBoxToScreen(Box.Position, Size)
+                    if OnScreen then
+                        local CenterX = (MinX + MaxX) / 2
+                        local BottomY = MaxY + 1
+                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 13, Color, Alpha, Role, true, "Verdana")
                     end
                 end
             end
@@ -192,6 +194,7 @@ task.spawn(function()
         if Library.Flags["Auto Collect"] then
             local Character = LocalPlayer.Character
             local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+            local Humanoid = Character and Character:FindFirstChildOfClass("Humanoid")
 
             if not HumanoidRootPart then
                 task.wait()
@@ -212,8 +215,8 @@ task.spawn(function()
                 end
 
                 if Library.Flags["Full Bag Suicide"] then
-                    if tonumber(memory.readstring(LocalPlayer.PlayerGui.MainGUI.Game.CoinBags.Container.Coin.CurrencyFrame.Icon.Coins, Offsets.GuiObject.Text)) == 40 then
-                        print("Yo dis not finished ngl")
+                    if tonumber(LocalPlayer.PlayerGui.MainGUI.Game.CoinBags.Container.Coin.CurrencyFrame.Icon.Coins.Text) == 40 then
+                        Humanoid:TakeDamage(100)
                     end
                 end
 
@@ -223,14 +226,18 @@ task.spawn(function()
                     continue
                 end
 
-                ActiveTween = Tween:Create(HumanoidRootPart, 20, CurrentCoin, "Linear")
+                local Distance = vector.magnitude(CurrentCoin.Position - HumanoidRootPart.Position)
 
-                ActiveTween.Completed = function()
-                    ActiveTween = nil
-                    CurrentCoin = nil
-                end
+                ActiveTween = TweenService:Create(
+                    HumanoidRootPart,
+                    { Time = Distance / 20, EasingStyle = "Linear" },
+                    { Position = CurrentCoin.Position }
+                )
 
                 ActiveTween:Play()
+            elseif ActiveTween.Finished then
+                ActiveTween = nil
+                CurrentCoin = nil
             end
         end
 
