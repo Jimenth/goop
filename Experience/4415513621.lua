@@ -4,8 +4,8 @@ local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 
 local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
-local Bounding = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/Severe/refs/heads/main/Modules/Bounding.lua"))()
 local Module = {
     Function = {},
 
@@ -19,6 +19,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+task.wait(2)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(2)
 
 -- // Interface \\ --
 
@@ -56,6 +59,27 @@ function Module.Function:GetEntityParts(Entity)
     end
     
     return Parts, Count
+end
+
+function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
+    local Center = BoxCFrame.Position
+    local HX, HY, HZ = BoxSize.X * 0.5, BoxSize.Y * 0.5, BoxSize.Z * 0.5
+    local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
+    local OnScreen = false
+    for SX = -1, 1, 2 do
+        for SY = -1, 1, 2 do
+            for SZ = -1, 1, 2 do
+                local Screen, Visible = Camera:WorldToScreenPoint(Vector3.new(Center.X + SX * HX, Center.Y + SY * HY, Center.Z + SZ * HZ))
+                if Screen.X < MinX then MinX = Screen.X end
+                if Screen.X > MaxX then MaxX = Screen.X end
+                if Screen.Y < MinY then MinY = Screen.Y end
+                if Screen.Y > MaxY then MaxY = Screen.Y end
+                if Visible then OnScreen = true end
+            end
+        end
+    end
+    if not OnScreen then return nil end
+    return Vector2.new(MinX, MinY), Vector2.new(MaxX - MinX, MaxY - MinY)
 end
 
 function Module.Function:Cache()
@@ -100,11 +124,12 @@ function Module.Function.Render()
             local Parts, Count = Module.Function:GetEntityParts(Animal)
 
             if Count > 0 then
-                local BoundingBox = Bounding.GetBoundingBox(Parts)
-                if BoundingBox then
-                    local ScaledSize = BoundingBox.Size * 2
+                local Box, WorldSize = GetBoundingBox(Parts)
+                local BoxPosition, BoxSize = Module.Function:WorldBoxToScreen(Box, WorldSize)
+                if BoxPosition and BoxSize then
+                    local ScaledSize = Vector2.new(BoxSize.X * 2, BoxSize.Y * 2)
 
-                    local ScaledPosition = Vector2.new(BoundingBox.Position.X - (ScaledSize.X - BoundingBox.Size.X) * 0.5, BoundingBox.Position.Y - (ScaledSize.Y - BoundingBox.Size.Y) * 0.5)
+                    local ScaledPosition = Vector2.new(BoxPosition.X - (ScaledSize.X - BoxSize.X) * 0.5, BoxPosition.Y - (ScaledSize.Y - BoxSize.Y) * 0.5)
 
                     local TopY = ScaledPosition.Y
                     local CenterX = ScaledPosition.X + ScaledSize.X * 0.5
