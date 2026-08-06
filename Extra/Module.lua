@@ -1960,38 +1960,38 @@ _G.TweenService = {
 }
 
 -- // Notifications \\ --
--- Replicates game:GetService("StarterGui"):SetCore("SendNotification", {...}) with
--- static Drawing objects. Icons that are rbxassetid:// (or a bare id) are resolved
--- to an image URL through the Roblox thumbnails endpoint; plain http(s) image URLs
--- are used as-is. Config: { Title, Text, Icon?, Duration? }.
 
 Global.Notification = {}
 
 local Notify = {
     Width = 136 * 1.5,
-    BodyHeight = 68 * 1.5,
-    Margin = 16 * 1.5,
+    BodyHeight = 60,
+    Margin = 8,
+    AnchorFraction = 0.90, 
+    SwingInTime = 0.38,
+    SwingOutTime = 0.30, 
+    TitleSize = 18, -- title text size
+    BodySize = 16, -- body text size
+    LineGap = 3, -- vertical gap between title and body
     StackGap = 8 * 1.5,
-    BackgroundColor = vector.create(0.06, 0.06, 0.07),
-    BackgroundOpacity = 0.25,          -- faint / "almost barely visible"
-    IconBuffer = 12 * 1.5,                  -- left gap before the icon
-    IconSize = 44 * 1.5,                    -- 68 tall - 12 top/bottom, centered
-    IconGap = 8 * 1.5,                      -- gap between icon and text
+    BackgroundColor = Color3.fromRGB(36, 36, 36),
+    BackgroundOpacity = 0.65, 
+    IconBuffer = 12 * 1.5, -- left gap before icon
+    IconSize = 44 * 1.5, 
+    IconGap = 8 * 1.5, -- gap between icon and text
     TitleColor = vector.create(1, 1, 1),
-    BodyColor = vector.create(0.80, 0.80, 0.84),
-    ButtonHeight = 30 * 1.5,
-    ButtonTopGap = 2 * 1.5,                 -- gap between body bottom and button row
-    ButtonSpacing = 2 * 1.5,                 -- gap between two buttons
-    ButtonColor = vector.create(0.14, 0.14, 0.16),
-    ButtonOpacity = 0.25,
-    ButtonTextColor = vector.create(0.92, 0.92, 0.95),
+    BodyColor = vector.create(1, 1, 1),
+    ButtonHeight = 30,
+    ButtonTopGap = 2, -- gap between body bottom and button row
+    ButtonSpacing = 2, -- gap between two buttons
+    ButtonColor = Color3.fromRGB(36, 36, 36),
+    ButtonOpacity = 0.65,
+    ButtonTextColor = vector.create(1, 1, 1),
 }
 
 local ActiveNotifications = {}
+local OffscreenOffset = Notify.Width + Notify.Margin + 24
 
--- Resolves an Icon (rbxassetid://N, a bare numeric id, or an http(s) URL) to a
--- usable image URL, or nil. Blocks on http for the rbxassetid case (callers run
--- this off the main thread).
 function Global.Function:ResolveIconUrl(Icon)
     if type(Icon) ~= "string" or Icon == "" then
         return nil
@@ -2008,7 +2008,7 @@ function Global.Function:ResolveIconUrl(Icon)
         local Data = OkDecode and type(Decoded) == "table" and Decoded.data and Decoded.data[1]
         local ImageUrl = Data and Data.imageUrl
         if type(ImageUrl) ~= "string" then return nil end
-        return ImageUrl .. ".png"
+        return ImageUrl
     end
 
     if Icon:match("^https?://") then
@@ -2017,7 +2017,6 @@ function Global.Function:ResolveIconUrl(Icon)
     return nil
 end
 
--- Total on-screen height, including the button row when present.
 function Global.Function:NotificationHeight(Entry)
     if Entry.Buttons then
         return Notify.BodyHeight + Notify.ButtonTopGap + Notify.ButtonHeight
@@ -2025,10 +2024,9 @@ function Global.Function:NotificationHeight(Entry)
     return Notify.BodyHeight
 end
 
--- Positions every drawing of a notification from its top-left corner, and refreshes
--- button hit-rects. Icon: left, vertically centered, fixed buffer. Text: centered
--- with no icon, shifted right (left-aligned after the icon) with one.
-function Global.Function:PositionNotification(Entry, X, Y)
+function Global.Function:PositionNotification(Entry)
+    local X = Entry.RestX + (Entry.XOffset or 0)
+    local Y = Entry.Y
     Entry.Panel.Position = vector.create(X, Y)
     Entry.Panel.Size = vector.create(Notify.Width, Notify.BodyHeight)
 
@@ -2042,8 +2040,11 @@ function Global.Function:PositionNotification(Entry, X, Y)
 
     Entry.Title.Center = Centered
     Entry.Body.Center = Centered
-    Entry.Title.Position = vector.create(TextX, Y + 16)
-    Entry.Body.Position = vector.create(TextX, Y + 38)
+    
+    local BlockHeight = Notify.TitleSize + Notify.LineGap + Notify.BodySize
+    local BlockTop = Y + (Notify.BodyHeight - BlockHeight) * 0.5
+    Entry.Title.Position = vector.create(TextX, BlockTop)
+    Entry.Body.Position = vector.create(TextX, BlockTop + Notify.TitleSize + Notify.LineGap)
 
     if Entry.Buttons then
         local Count = #Entry.Buttons
@@ -2059,31 +2060,43 @@ function Global.Function:PositionNotification(Entry, X, Y)
     end
 end
 
--- Re-stacks all active notifications up from the bottom-right corner.
 function Global.Function:ReflowNotifications()
     local Screen = game.Workspace.CurrentCamera.ViewportSize
-    local BaseX = Screen.x - Notify.Width - Notify.Margin
-    local Y = Screen.y - Notify.Margin
+    local RestX = Screen.x - Notify.Width - Notify.Margin
+    local Y = Screen.y * Notify.AnchorFraction
     for _, Entry in ActiveNotifications do
         Y = Y - Global.Function:NotificationHeight(Entry)
-        Global.Function:PositionNotification(Entry, BaseX, Y)
+        Entry.RestX = RestX
+        Entry.Y = Y
+        Global.Function:PositionNotification(Entry)
         Y = Y - Notify.StackGap
     end
 end
 
--- Fades out (once), removes the drawings, and re-stacks the rest.
+function Global.Function:AnimateNotificationX(Entry, FromOffset, ToOffset, Duration, Ease)
+    local Start = os.clock()
+    while not Entry.Removed do
+        local T = math.min((os.clock() - Start) / Duration, 1)
+        local Eased = Ease(T)
+        Entry.XOffset = FromOffset + (ToOffset - FromOffset) * Eased
+        Global.Function:PositionNotification(Entry)
+        if T >= 1 then break end
+        task.wait()
+    end
+    if not Entry.Removed then
+        Entry.XOffset = ToOffset
+        Global.Function:PositionNotification(Entry)
+    end
+end
+
 function Global.Function:DismissNotification(Entry)
     if Entry.Dismissed then return end
     Entry.Dismissed = true
 
-    for Step = 9, 0, -1 do
-        local Alpha = Step / 9
-        for _, Fade in Entry.Fadeable do
-            pcall(function() Fade.Drawing.Opacity = Fade.Base * Alpha end)
-        end
-        task.wait(0.02)
-    end
+    Global.Function:AnimateNotificationX(Entry, Entry.XOffset or 0, OffscreenOffset,
+        Notify.SwingOutTime, Global.Easing.Back.In)
 
+    Entry.Removed = true
     local Index = table.find(ActiveNotifications, Entry)
     if Index then table.remove(ActiveNotifications, Index) end
     for _, Drawing in Entry.Drawings do
@@ -2092,8 +2105,6 @@ function Global.Function:DismissNotification(Entry)
     Global.Function:ReflowNotifications()
 end
 
--- Invokes the config Callback with the pressed button's text. Accepts a plain
--- function or a BindableFunction-like object with :Invoke.
 function Global.Function:InvokeCallback(Callback, ButtonText)
     if type(Callback) == "function" then
         pcall(Callback, ButtonText)
@@ -2113,8 +2124,6 @@ function Global.Function:BuildNotification(Config)
     local Drawings = {}
     local Fadeable = {}
 
-    -- Registers a drawing for removal and for the fade (base = its solid opacity).
-    -- A tiny inline closure rather than a method, since it captures these two lists.
     local function Track(Drawing, BaseOpacity)
         Drawings[#Drawings + 1] = Drawing
         Fadeable[#Fadeable + 1] = { Drawing = Drawing, Base = BaseOpacity }
@@ -2134,6 +2143,8 @@ function Global.Function:BuildNotification(Config)
     if IconUrl then
         Icon = Image.new()
         Icon.Url = IconUrl
+        Icon.Color = vector.create(1, 1, 1)
+        Icon.Opacity = 1
         Icon.ZIndex = 101
         Icon.Visible = true
         Track(Icon, 1)
@@ -2141,7 +2152,7 @@ function Global.Function:BuildNotification(Config)
 
     local Title = Text.new()
     Title.Text = TitleString
-    Title.Size = 15
+    Title.Size = Notify.TitleSize
     Title.Font = "Source-Sans-Pro"
     Title.Color = Notify.TitleColor
     Title.Outline = true
@@ -2152,7 +2163,7 @@ function Global.Function:BuildNotification(Config)
 
     local Body = Text.new()
     Body.Text = BodyString
-    Body.Size = 13
+    Body.Size = Notify.BodySize
     Body.Font = "Source-Sans-Pro"
     Body.Color = Notify.BodyColor
     Body.Outline = true
@@ -2161,7 +2172,6 @@ function Global.Function:BuildNotification(Config)
     Body.Visible = true
     Track(Body, 1)
 
-    -- Up to two buttons (Button1 then Button2).
     local Buttons
     local Labels = {}
     if type(Config.Button1) == "string" and Config.Button1 ~= "" then Labels[#Labels + 1] = Config.Button1 end
@@ -2181,7 +2191,7 @@ function Global.Function:BuildNotification(Config)
 
             local ButtonLabel = Text.new()
             ButtonLabel.Text = ButtonText
-            ButtonLabel.Size = 14
+            ButtonLabel.Size = 16
             ButtonLabel.Font = "Source-Sans-Pro"
             ButtonLabel.Center = true
             ButtonLabel.Color = Notify.ButtonTextColor
@@ -2204,14 +2214,16 @@ function Global.Function:BuildNotification(Config)
         Body = Body,
         Buttons = Buttons,
         Callback = Config.Callback,
+        XOffset = OffscreenOffset,
     }
 
-    -- Newest at the bottom of the stack.
     table.insert(ActiveNotifications, 1, Entry)
     Global.Function:ReflowNotifications()
 
-    -- Lifetime: dismiss after Duration, or immediately when a button is clicked.
     task.spawn(function()
+        Global.Function:AnimateNotificationX(Entry, OffscreenOffset, 0,
+            Notify.SwingInTime, Global.Easing.Back.Out)
+
         local Deadline = os.clock() + Duration
         while not Entry.Dismissed do
             if os.clock() >= Deadline then break end
@@ -2239,7 +2251,6 @@ function Global.Function:BuildNotification(Config)
     end)
 end
 
--- Fire-and-forget (the rbxassetid http fetch runs off the caller's thread).
 function Global.Function:SendNotification(Config)
     task.spawn(function()
         Global.Function:BuildNotification(Config)
@@ -2254,9 +2265,6 @@ _G.SendNotification = function(Config)
     Global.Function:SendNotification(Config)
 end
 
--- Expose a global StarterGui with SetCore (declaring the method on the real
--- StarterGui instance isn't accepted by this environment). Works both as
--- `_G.StarterGui:SetCore(...)` and bare `StarterGui:SetCore(...)`.
 _G.StarterGui = {
     SetCore = function(self, CoreType, Config)
         if CoreType == "SendNotification" then
