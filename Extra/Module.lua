@@ -22,9 +22,23 @@
 
 Drawing.RegisterFont("Source-Sans-Pro", 96, http.get({ url = "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Source-Sans-Pro.ttf" }))
 
-local Offsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
+local RawOffsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Offsets.lua"))()
 task.wait(2)
-assert(Offsets, "Module: failed to load offsets from Offsets.lua")
+assert(RawOffsets, "Module: failed to load offsets from Offsets.lua")
+
+-- Resilience: a missing namespace or field must NOT crash the whole module. Wrap
+-- Offsets so `Offsets.X.Y` yields nil (never an "index nil" error) for anything the
+-- dump lacks. Fields that come out nil are dropped from the property tables by Lua
+-- (a `Name = nil` constructor entry is a no-op), and the declaration drivers skip
+-- any table-form entry whose offset is nil -- so missing namespaces just lose their
+-- members instead of aborting the load. They're reported once for visibility.
+local EmptyNamespace = {}
+local Offsets = setmetatable({}, {
+    __index = function(_, Key)
+        return RawOffsets[Key] or EmptyNamespace
+    end,
+})
+
 for _, Namespace in {
     "Humanoid", "ClickDetector", "Clothing", "DataModel", "DragDetector", "Workspace", "Terrain",
     "BasePart", "Primitive", "PrimitiveFlags", "ParticleEmitter", "Player", "ProximityPrompt", "Sky",
@@ -35,7 +49,9 @@ for _, Namespace in {
     "GuiBase2D", "GuiObject", "Lighting", "Camera", "Model", "World", "SpawnLocation",
     "MouseService", "InputObject", "SpecialMesh", "TextLabel", "TextButton", "Team", "Tool",
 } do
-    assert(Offsets[Namespace], "Module: missing offset namespace '" .. Namespace .. "'")
+    if not RawOffsets[Namespace] then
+        print("[Module] missing offset namespace (its members are skipped): " .. Namespace)
+    end
 end
 
 memory.set_write_strength(1e-6)
@@ -809,6 +825,7 @@ function Global.Function:DeclareScalar(ClassMap, Reader, Writer)
     for Class, Fields in ClassMap do
         for Name, Info in Fields do
             local Offset, ReadOnly = self:Resolve(Info)
+            if Offset == nil then continue end   -- offset missing from the dump
 
             local Callback = {
                 get = function(self)
@@ -833,6 +850,7 @@ function Global.Function:DeclareEnum(ClassMap)
         for Name, Info in Fields do
             local Offset = Info.Offset
             local EnumType = Info.EnumType
+            if Offset == nil then continue end   -- offset missing from the dump
 
             local Callback = {
                 get = function(self)
@@ -861,8 +879,10 @@ end
 -- WindowInputState). The pointer is dereferenced per access, then read/written
 -- at the absolute address (Base + Offset). Reader/Writer take absolute addresses.
 function Global.Function:DeclareIndirect(Class, PointerOffset, Fields, Reader, Writer)
+    if PointerOffset == nil then return end   -- pointer namespace missing from the dump
     for Name, Info in Fields do
         local Offset, ReadOnly = self:Resolve(Info)
+        if Offset == nil then continue end
 
         local Callback = {
             get = function(self)
@@ -891,6 +911,7 @@ end
 -- address (0 if any hop is null). The first hop reads from the instance; the
 -- rest read from absolute addresses.
 function Global.Function:ResolveChain(Object, Hops)
+    if Hops[1] == nil then return 0 end   -- first hop offset missing from the dump
     local Base = Global.Function:ReadU64Number(Object.Data, Hops[1])
     for Index = 2, #Hops do
         if Base == 0 then
@@ -905,6 +926,7 @@ end
 function Global.Function:DeclareChain(Class, Hops, Fields, Reader, Writer)
     for Name, Info in Fields do
         local Offset, ReadOnly = self:Resolve(Info)
+        if Offset == nil then continue end
 
         local Callback = {
             get = function(self)
