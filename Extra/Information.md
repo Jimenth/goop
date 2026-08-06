@@ -183,6 +183,21 @@ TweenService:Create(part, { Time = 1, EasingStyle = "Quad" }, { Position = targe
 - **`:IsMouseButtonPressed(button)`** → `boolean`
 - **`:GetMouseLocation()`** → `Vector2`
 
+### StarterGui
+- **`:SetCore("SendNotification", configTable)`**
+
+## Parameters
+
+| Name | Type | Default | Required | Description |
+|---|---|---|---|---|
+| `Title` | string | — | Yes | The title of the notification. |
+| `Text` | string | — | Yes | The main text displayed in the notification. |
+| `Icon` | string | — | No | The image asset to display with the notification, allows hosted url or roblox asset id (rbxassetid/#). |
+| `Duration` | number | `5` | No | The amount of time (in seconds) the notification remains visible. |
+| `Callback` | function | — | No | A function invoked with the text of the button pressed by the player. |
+| `Button1` | string | — | No | The text displayed on the first button. |
+| `Button2` | string | — | No | The text displayed on the second button. |
+
 ---
 
 ## Events (Connections)
