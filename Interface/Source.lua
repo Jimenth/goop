@@ -151,8 +151,6 @@ local Library do
         end
     end
 
-    Fonts.Load(Library.Folders.Fonts)
-
     local function LoadFonts()
         for _, FontData in pairs(Library.Fonts.Stored) do
             local Name, Url = FontData[1]:match("([^%.]+)"), FontData[3]
