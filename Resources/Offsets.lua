@@ -1,11 +1,5 @@
-local Version = loadstring(game:HttpGet(
-    "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Version.lua"
-))()
-
-local Sources = {
-    "https://offsets.imtheo.lol/" .. Version .. "/offsets.hpp",
-    "https://dumper.jonah.cool/" .. Version .. "/offsets.h",
-}
+local Version = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Version.lua"))()
+local Source = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Offsets/" .. Version .. "/Offsets.hpp"
 
 local Offsets = {}
 
@@ -53,32 +47,27 @@ local function VersionMatches(Embedded)
         return true
     end
     local Target = tostring(Version)
-    return Embedded == Target
-        or Embedded:find(Target, 1, true) ~= nil
-        or Target:find(Embedded, 1, true) ~= nil
+    return Embedded == Target or Embedded:find(Target, 1, true) ~= nil or Target:find(Embedded, 1, true) ~= nil
 end
 
-local Loaded = 0
-for _, URL in Sources do
-    local Ok, Response = pcall(function()
-        return game:HttpGet(URL)
-    end)
+local Ok, Response = pcall(function()
+    return game:HttpGet(Source)
+end)
 
-    if not Ok or not Response or #Response == 0 then
-        send_notification("Offsets: source failed to fetch -- " .. URL, "warning")
-    else
-        local Embedded = Response:match('roblox_version%s*=%s*"([^"]+)"')
-        if not VersionMatches(Embedded) then
-            send_notification("Offsets: skipped version-mismatched source (" .. tostring(Embedded) .. ")", "warning")
-        else
-            ParseSource(Response)
-            Loaded += 1
-        end
-    end
+if not Ok or not Response or #Response == 0 then
+    send_notification("Offsets: failed to fetch -- " .. Source, "warning")
+    return nil
 end
 
-if Loaded == 0 then
-    send_notification("Offsets: all sources failed", "warning")
+local Embedded = Response:match('roblox_version%s*=%s*"([^"]+)"')
+if not VersionMatches(Embedded) then
+    send_notification("Offsets: fetched file reports version " .. tostring(Embedded) .. " but expected " .. tostring(Version) .. " -- using it anyway", "warning")
+end
+
+ParseSource(Response)
+
+if next(Offsets) == nil then
+    send_notification("Offsets: fetched successfully but no offsets were parsed out of it", "warning")
     return nil
 end
 
