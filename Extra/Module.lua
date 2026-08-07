@@ -4,10 +4,6 @@
     Extends the memory-backed Instance API with additional Roblox-accurate
     properties and methods that the environment doesn't expose natively.
 
-    Everything is declared through `Instance.declare` using the `memory` library
-    documented in spec.d.luau. Offsets are pulled live from Offsets.lua (which
-    mirrors https://offsets.imtheo.lol), so field names match the Roblox schema.
-
     Property / method names follow Roblox exactly (PascalCase), e.g. the offset
     key `Walkspeed` is surfaced as the Roblox property `WalkSpeed`.
 
@@ -26,12 +22,6 @@ local RawOffsets = loadstring(game:HttpGet("https://raw.githubusercontent.com/Ji
 task.wait(2)
 assert(RawOffsets, "Module: failed to load offsets from Offsets.lua")
 
--- Resilience: a missing namespace or field must NOT crash the whole module. Wrap
--- Offsets so `Offsets.X.Y` yields nil (never an "index nil" error) for anything the
--- dump lacks. Fields that come out nil are dropped from the property tables by Lua
--- (a `Name = nil` constructor entry is a no-op), and the declaration drivers skip
--- any table-form entry whose offset is nil -- so missing namespaces just lose their
--- members instead of aborting the load. They're reported once for visibility.
 local EmptyNamespace = {}
 local Offsets = setmetatable({}, {
     __index = function(_, Key)
@@ -1001,7 +991,7 @@ Global.Function:DeclareScalar(Global.Properties.Long,
 Global.Function:DeclareScalar(Global.Properties.Vector,
     function(Data, Offset)
         local Components = memory.readvector(Data, Offset)
-        return Vector3.new(Components.x, Components.y, Components.z)
+        return vector.create(Components.x, Components.y, Components.z)
     end,
     function(Data, Offset, Value)
         memory.writevector(Data, Offset, Global.Function:ToComponents(Value))
@@ -1076,7 +1066,7 @@ Global.Function:DeclareEnum(Global.Properties.Enum)
 -- properties.
 local ReadVector3Absolute = function(Address)
     local Components = memory.readvector(Address)
-    return Vector3.new(Components.x, Components.y, Components.z)
+    return vector.create(Components.x, Components.y, Components.z)
 end
 local WriteVector3Absolute = function(Address, Value)
     memory.writevector(Address, Global.Function:ToComponents(Value))
@@ -1174,14 +1164,14 @@ Instance.declare({ class = "Humanoid", name = "TakeDamage", callback = {
     end,
 }})
 
--- game:GetTickRate() -- reads worldStepsPerSec back (nil if the chain is null).
+-- game:GetTickRate() -- reads WorldSteps back (nil if the chain is null).
 Instance.declare({ class = "DataModel", name = "GetTickRate", callback = {
     method = function(self)
         local World = Global.Function:ResolveChain(self, { Offsets.DataModel.Workspace, Offsets.Workspace.World })
         if World == 0 then
             return nil
         end
-        return Global.Function:ReadFloatAbsolute(World + Offsets.World.worldStepsPerSec)
+        return Global.Function:ReadFloatAbsolute(World + Offsets.World.WorldSteps)
     end,
 }})
 
@@ -1611,11 +1601,11 @@ local function ComputeBoundingBox(Parts)
     end
 
     if MinX == math.huge then
-        return CFrame.new(0, 0, 0), Vector3.new(0, 0, 0)
+        return CFrame.new(0, 0, 0), vector.create(0, 0, 0)
     end
 
     local Center = CFrame.new((MinX + MaxX) * 0.5, (MinY + MaxY) * 0.5, (MinZ + MaxZ) * 0.5)
-    return Center, Vector3.new(MaxX - MinX, MaxY - MinY, MaxZ - MinZ)
+    return Center, vector.create(MaxX - MinX, MaxY - MinY, MaxZ - MinZ)
 end
 
 -- Collects a model's direct-child BaseParts (shallow).
@@ -1654,14 +1644,14 @@ local function GetBoundingBox(Argument)
         if BasePartClassSet[Argument.ClassName] then
             return ComputeBoundingBox({ Argument })
         end
-        return CFrame.new(0, 0, 0), Vector3.new(0, 0, 0)
+        return CFrame.new(0, 0, 0), vector.create(0, 0, 0)
     end
 
     if type(Argument) == "table" then
         return ComputeBoundingBox(Argument)
     end
 
-    return CFrame.new(0, 0, 0), Vector3.new(0, 0, 0)
+    return CFrame.new(0, 0, 0), vector.create(0, 0, 0)
 end
 _G.GetBoundingBox = GetBoundingBox
 
@@ -1716,10 +1706,10 @@ function Global.Tween:Lerp(Start, Goal, Alpha)
         return Start + (Goal - Start) * Alpha
     end
     -- Native 3-component `vector` (Vector3 / Drawing positions / Color3). Build
-    -- the result from components with Vector3.new(x, y, z) -- the exact form
+    -- the result from components with vector.create(x, y, z) -- the exact form
     -- Tween.lua uses to move parts -- rather than native-vector arithmetic.
     if Kind == "vector" then
-        return Vector3.new(
+        return vector.create(
             Start.X + (Goal.X - Start.X) * Alpha,
             Start.Y + (Goal.Y - Start.Y) * Alpha,
             Start.Z + (Goal.Z - Start.Z) * Alpha
@@ -2700,8 +2690,8 @@ local function WatchMouseMovement(Object, Signal)
             LastX, LastY = Position.x, Position.y
             Signal:Fire({
                 UserInputType = "MouseMovement",
-                Position = Vector3.new(Position.x, Position.y, 0),
-                Delta = Vector3.new(DeltaX, DeltaY, 0),
+                Position = vector.create(Position.x, Position.y, 0),
+                Delta = vector.create(DeltaX, DeltaY, 0),
             })
         end
     end
