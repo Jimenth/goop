@@ -38,6 +38,10 @@ for _, Namespace in {
     "BlurEffect", "CharacterMesh", "ColorCorrectionEffect", "ColorGradingEffect", "DepthOfFieldEffect",
     "GuiBase2D", "GuiObject", "Lighting", "Camera", "Model", "World", "SpawnLocation",
     "MouseService", "InputObject", "SpecialMesh", "TextLabel", "TextButton", "Team", "Tool",
+    "Instance", "ClassDescriptor", "Descriptor", "PropertyDescriptor", "FunctionDescriptor",
+    "MeshContentProvider", "LruHolder", "LruNode", "MemEnforcedLRUCache", "CachedItem", "FileMeshData",
+    "SurfaceAppearance", "SunRaysEffect", "Sound", "Misc", "LightingParameters", "Highlight",
+    "Script", "LocalScript", "ModuleScript", "ByteCode",
 } do
     if not RawOffsets[Namespace] then
         print("[Module] missing offset namespace (its members are skipped): " .. Namespace)
@@ -46,12 +50,6 @@ end
 
 memory.set_write_strength(1e-6)
 local ScratchBuffer = buffer.create(4)
-
--- locked metatable (can't be augmented) and exposes only lowercase .x/.y/.z plus
--- the `vector` library functions. So there is no Roblox `.Magnitude` / `.Unit`
--- property -- use vector.magnitude(a - b), vector.normalize(v), vector.dot(a, b),
--- and vector.cross(a, b) instead. Tween interpolation relies only on arithmetic
--- operators, which native vectors support, so it is unaffected.
 
 local Global = {
     Function = {},
@@ -124,6 +122,15 @@ local Global = {
             ScreenGui = {
                 Enabled = Offsets.GuiObject.ScreenGui_Enabled,
             },
+            Sound = {
+                IsPlaying = { Offset = Offsets.Sound.IsPlaying, ReadOnly = true },
+                Looped = Offsets.Sound.Looped,
+            },
+            SunRaysEffect = { Enabled = Offsets.SunRaysEffect.Enabled },
+            Highlight = { Enabled = Offsets.Highlight.Enabled },
+            ModuleScript = {
+                IsRobloxScript = { Offset = Offsets.ModuleScript.IsRobloxScript, ReadOnly = true },
+            },
         },
 
         Integer = {
@@ -152,6 +159,9 @@ local Global = {
             },
             SpawnLocation = {
                 Duration = Offsets.SpawnLocation.ForcefieldDuration,
+            },
+            Lighting = {
+                Source = { Offset = Offsets.LightingParameters.Source, ReadOnly = true },
             },
         },
 
@@ -298,6 +308,23 @@ local Global = {
                 Reflectance = Offsets.BasePart.Reflectance,
                 Transparency = Offsets.BasePart.Transparency,
             },
+            Sound = {
+                PlaybackSpeed = Offsets.Sound.PlaybackSpeed,
+                RollOffMaxDistance = Offsets.Sound.RollOffMaxDistance,
+                RollOffMinDistance = Offsets.Sound.RollOffMinDistance,
+                Volume = Offsets.Sound.Volume,
+            },
+            SunRaysEffect = {
+                Intensity = Offsets.SunRaysEffect.Intensity,
+                Spread = Offsets.SunRaysEffect.Spread,
+            },
+            SurfaceAppearance = {
+                EmissiveStrength = Offsets.SurfaceAppearance.EmissiveStrength,
+            },
+            Highlight = {
+                FillTransparency = Offsets.Highlight.FillTransparency,
+                OutlineTransparency = Offsets.Highlight.OutlineTransparency,
+            },
         },
 
         Long = {
@@ -352,6 +379,9 @@ local Global = {
                 TargetPoint = Offsets.Humanoid.TargetPoint,
                 MoveDirection = { Offset = Offsets.Humanoid.MoveDirection, ReadOnly = true },
             },
+            Camera = {
+                Position = { Offset = Offsets.Camera.Position, ReadOnly = true },
+            },
             DragDetector = {
                 MaxDragTranslation = Offsets.DragDetector.MaxDragTranslation,
                 MinDragTranslation = Offsets.DragDetector.MinDragTranslation,
@@ -372,6 +402,12 @@ local Global = {
             },
             SpecialMesh = {
                 Offset = Offsets.SpecialMesh.Offset,
+                Scale = Offsets.SpecialMesh.Scale,
+            },
+            Lighting = {
+                LightDirection = Offsets.LightingParameters.LightDirection,
+                TrueSunPosition = Offsets.LightingParameters.TrueSunPosition,
+                TrueMoonPosition = Offsets.LightingParameters.TrueMoonPosition,
             },
         },
 
@@ -404,6 +440,17 @@ local Global = {
                 ColorShift_Top = Offsets.Lighting.ColorShift_Top,
                 FogColor = Offsets.Lighting.FogColor,
                 OutdoorAmbient = Offsets.Lighting.OutdoorAmbient,
+                LightColor = Offsets.LightingParameters.LightColor,
+                SkyAmbient = Offsets.LightingParameters.SkyAmbient,
+                SkyAmbient2 = Offsets.LightingParameters.SkyAmbient2,
+            },
+            SurfaceAppearance = {
+                Color = Offsets.SurfaceAppearance.Color,
+                EmissiveTint = Offsets.SurfaceAppearance.EmissiveTint,
+            },
+            Highlight = {
+                FillColor = Offsets.Highlight.FillColor,
+                OutlineColor = Offsets.Highlight.OutlineColor,
             },
             GuiObject = {
                 BackgroundColor3 = Offsets.GuiObject.BackgroundColor3,
@@ -492,6 +539,33 @@ local Global = {
             GuiImage = {
                 Image = Offsets.GuiObject.Image,
             },
+            MeshPart = {
+                MeshId = { Offset = Offsets.MeshPart.MeshId, ReadOnly = true },
+            },
+            Sound = {
+                SoundId = Offsets.Sound.SoundId,
+            },
+            SurfaceAppearance = {
+                ColorMap = Offsets.SurfaceAppearance.ColorMap,
+                EmissiveMaskContent = Offsets.SurfaceAppearance.EmissiveMaskContent,
+                MetalnessMap = Offsets.SurfaceAppearance.MetalnessMap,
+                NormalMap = Offsets.SurfaceAppearance.NormalMap,
+                RoughnessMap = Offsets.SurfaceAppearance.RoughnessMap,
+            },
+            Animation = {
+                AnimationId = Offsets.Misc.AnimationId,
+            },
+            Script = {
+                GUID = { Offset = Offsets.Script.GUID, ReadOnly = true },
+                Hash = { Offset = Offsets.Script.Hash, ReadOnly = true },
+            },
+            LocalScript = {
+                Hash = { Offset = Offsets.LocalScript.Hash, ReadOnly = true },
+            },
+            ModuleScript = {
+                GUID = { Offset = Offsets.ModuleScript.GUID, ReadOnly = true },
+                Hash = { Offset = Offsets.ModuleScript.Hash, ReadOnly = true },
+            },
         },
 
         Reference = {
@@ -527,6 +601,18 @@ local Global = {
                 Attachment0 = Offsets.Beam.Attachment0,
                 Attachment1 = Offsets.Beam.Attachment1,
             },
+            Sound = {
+                SoundGroup = Offsets.Sound.SoundGroup,
+            },
+            Highlight = {
+                Adornee = Offsets.Highlight.Adornee,
+            },
+            BillboardGui = {
+                Adornee = Offsets.Misc.Adornee,
+            },
+            SurfaceGui = {
+                Adornee = Offsets.Misc.Adornee,
+            },
         },
 
         Enum = {
@@ -558,6 +644,12 @@ local Global = {
             },
             ColorGradingEffect = {
                 TonemapperPreset = { Offset = Offsets.ColorGradingEffect.TonemapperPreset, EnumType = Enum.TonemapperPreset },
+            },
+            SurfaceAppearance = {
+                AlphaMode = { Offset = Offsets.SurfaceAppearance.AlphaMode, EnumType = Enum.AlphaMode },
+            },
+            Highlight = {
+                DepthMode = { Offset = Offsets.Highlight.DepthMode, EnumType = Enum.HighlightDepthMode },
             },
         },
     },
@@ -625,9 +717,6 @@ local Global = {
 
 -- // Helpers \\ --
 
--- The memory library has no native f32 accessor, so 32-bit floats are read and
--- written through their raw u32 representation, reinterpreted via a scratch
--- buffer (standard Luau `buffer` library).
 function Global.Function:ReadFloat(Data, Offset)
     buffer.writeu32(ScratchBuffer, 0, memory.readu32(Data, Offset))
     return buffer.readf32(ScratchBuffer, 0)
@@ -970,6 +1059,511 @@ function Global.Function:DeclarePrimitiveFlags(Fields)
     end
 end
 
+-- // CFrame -- complete reimplementation \\ --
+-- Severe's native CFrame is broken in this environment: BasePart.CFrame reads
+-- back as a plain Lua table (not a real userdata) that lacks operators
+-- (`cf * vector` throws "attempt to perform arithmetic (mul) on table and
+-- vector") and lacks methods (:PointToWorldSpace doesn't exist) -- confirmed
+-- directly while building the mesh outline renderer above, which is why that
+-- code works off Position/RightVector/UpVector/LookVector by hand instead of
+-- touching .CFrame's operators. This replaces the global CFrame entirely with
+-- a complete pure-Lua implementation: every standard constructor, every
+-- method, real operators (+, -, *, ==), all built on 12 plain numbers
+-- (position xyz + a row-major 3x3 rotation matrix, matching :GetComponents()'s
+-- own layout) with no dependency on the native type at all.
+--
+-- This does NOT fix WRITING rotation to a live BasePart -- Position is the
+-- only confirmed-reliable native write path in this environment (see
+-- [[severe-native-properties]]; native CFrame writes are already known to
+-- spin/invert a moving character, which is why TweenService aliases CFrame
+-- goals to Position-only below). ReadPartCFrame(Part) gives a correct, fully
+-- functional CFrame built from a live part's CURRENT transform for
+-- reading/math purposes; there's no matching writer.
+
+local CFrameMeta = {}
+
+-- // Matrix / quaternion math (module-private) \\ --
+
+-- 3x3 * 3x3, both flattened row-major (9 in, 9 in, 9 out) to avoid wrapping
+-- intermediates in tables -- this gets called during every CFrame*CFrame and
+-- every Euler-angle construction.
+local function MatMul3(
+    A00,A01,A02,A10,A11,A12,A20,A21,A22,
+    B00,B01,B02,B10,B11,B12,B20,B21,B22
+)
+    return
+        A00*B00 + A01*B10 + A02*B20,
+        A00*B01 + A01*B11 + A02*B21,
+        A00*B02 + A01*B12 + A02*B22,
+        A10*B00 + A11*B10 + A12*B20,
+        A10*B01 + A11*B11 + A12*B21,
+        A10*B02 + A11*B12 + A12*B22,
+        A20*B00 + A21*B10 + A22*B20,
+        A20*B01 + A21*B11 + A22*B21,
+        A20*B02 + A21*B12 + A22*B22
+end
+
+local function VecLen(X, Y, Z)
+    return math.sqrt(X*X + Y*Y + Z*Z)
+end
+
+local function VecNormalize(X, Y, Z)
+    local Len = VecLen(X, Y, Z)
+    if Len == 0 then return 0, 0, 0 end
+    return X / Len, Y / Len, Z / Len
+end
+
+local function VecCross(AX, AY, AZ, BX, BY, BZ)
+    return AY*BZ - AZ*BY, AZ*BX - AX*BZ, AX*BY - AY*BX
+end
+
+-- Matrix -> quaternion (Shepperd's method, the standard numerically-stable
+-- approach -- picks whichever of trace/R00/R11/R22 is largest as the pivot).
+local function MatrixToQuaternion(R00,R01,R02,R10,R11,R12,R20,R21,R22)
+    local Trace = R00 + R11 + R22
+    local QX, QY, QZ, QW
+
+    if Trace > 0 then
+        local S = math.sqrt(Trace + 1) * 2
+        QW = 0.25 * S
+        QX = (R21 - R12) / S
+        QY = (R02 - R20) / S
+        QZ = (R10 - R01) / S
+    elseif R00 > R11 and R00 > R22 then
+        local S = math.sqrt(1 + R00 - R11 - R22) * 2
+        QW = (R21 - R12) / S
+        QX = 0.25 * S
+        QY = (R01 + R10) / S
+        QZ = (R02 + R20) / S
+    elseif R11 > R22 then
+        local S = math.sqrt(1 + R11 - R00 - R22) * 2
+        QW = (R02 - R20) / S
+        QX = (R01 + R10) / S
+        QY = 0.25 * S
+        QZ = (R12 + R21) / S
+    else
+        local S = math.sqrt(1 + R22 - R00 - R11) * 2
+        QW = (R10 - R01) / S
+        QX = (R02 + R20) / S
+        QY = (R12 + R21) / S
+        QZ = 0.25 * S
+    end
+
+    return QX, QY, QZ, QW
+end
+
+-- Quaternion -> matrix (expects a normalized quaternion).
+local function QuaternionToMatrix(QX, QY, QZ, QW)
+    return
+        1 - 2*(QY*QY + QZ*QZ), 2*(QX*QY - QZ*QW),     2*(QX*QZ + QY*QW),
+        2*(QX*QY + QZ*QW),     1 - 2*(QX*QX + QZ*QZ), 2*(QY*QZ - QX*QW),
+        2*(QX*QZ - QY*QW),     2*(QY*QZ + QX*QW),     1 - 2*(QX*QX + QY*QY)
+end
+
+-- // Construction \\ --
+
+local function NewCFrameRaw(X, Y, Z, R00, R01, R02, R10, R11, R12, R20, R21, R22)
+    return setmetatable({
+        X = X, Y = Y, Z = Z,
+        R00 = R00, R01 = R01, R02 = R02,
+        R10 = R10, R11 = R11, R12 = R12,
+        R20 = R20, R21 = R21, R22 = R22,
+    }, CFrameMeta)
+end
+
+local function IsCFrame(Value)
+    return type(Value) == "table" and getmetatable(Value) == CFrameMeta
+end
+Global.Function.IsCFrame = function(_, Value) return IsCFrame(Value) end
+
+-- Normalises any position/vector-like argument (Vector3, native vector, or a
+-- plain {x,y,z}/{X,Y,Z} table) into three plain numbers.
+local function ToXYZ(Value)
+    local Components = Global.Function:ToComponents(Value)
+    return Components.x, Components.y, Components.z
+end
+
+local CFrameLib = {}
+
+function CFrameLib.new(...)
+    local Count = select("#", ...)
+
+    if Count == 0 then
+        return NewCFrameRaw(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+    end
+
+    if Count == 1 then
+        local A = ...
+        if IsCFrame(A) then
+            return NewCFrameRaw(A.X, A.Y, A.Z, A.R00, A.R01, A.R02, A.R10, A.R11, A.R12, A.R20, A.R21, A.R22)
+        end
+        local X, Y, Z = ToXYZ(A)
+        return NewCFrameRaw(X, Y, Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+    end
+
+    if Count == 2 then
+        local PosArg, LookArg = ...
+        return CFrameLib.lookAt(PosArg, LookArg)
+    end
+
+    if Count == 3 then
+        local X, Y, Z = ...
+        return NewCFrameRaw(X, Y, Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+    end
+
+    if Count == 7 then
+        local X, Y, Z, QX, QY, QZ, QW = ...
+        local R00,R01,R02,R10,R11,R12,R20,R21,R22 = QuaternionToMatrix(QX, QY, QZ, QW)
+        return NewCFrameRaw(X, Y, Z, R00,R01,R02,R10,R11,R12,R20,R21,R22)
+    end
+
+    if Count == 12 then
+        return NewCFrameRaw(...)
+    end
+
+    error("CFrame.new: unsupported argument count (" .. Count .. ")", 2)
+end
+
+-- CFrame.lookAt(position, lookAt, up?) -- orients so LookVector points from
+-- position toward lookAt. up defaults to (0, 1, 0); if the look direction is
+-- parallel to up, falls back to an alternate up so the basis doesn't collapse
+-- to NaN.
+function CFrameLib.lookAt(Position, LookAt, Up)
+    local PX, PY, PZ = ToXYZ(Position)
+    local LX, LY, LZ = ToXYZ(LookAt)
+    local UX, UY, UZ
+    if Up then UX, UY, UZ = ToXYZ(Up) else UX, UY, UZ = 0, 1, 0 end
+
+    local BackX, BackY, BackZ = VecNormalize(PX - LX, PY - LY, PZ - LZ)
+    if BackX == 0 and BackY == 0 and BackZ == 0 then
+        return NewCFrameRaw(PX, PY, PZ, 1, 0, 0, 0, 1, 0, 0, 0, 1) -- position == lookAt
+    end
+
+    local RightX, RightY, RightZ = VecCross(UX, UY, UZ, BackX, BackY, BackZ)
+    if VecLen(RightX, RightY, RightZ) < 1e-6 then
+        RightX, RightY, RightZ = VecCross(0, 0, 1, BackX, BackY, BackZ)
+        if VecLen(RightX, RightY, RightZ) < 1e-6 then
+            RightX, RightY, RightZ = VecCross(1, 0, 0, BackX, BackY, BackZ)
+        end
+    end
+    RightX, RightY, RightZ = VecNormalize(RightX, RightY, RightZ)
+    local TrueUpX, TrueUpY, TrueUpZ = VecCross(BackX, BackY, BackZ, RightX, RightY, RightZ)
+
+    return NewCFrameRaw(PX, PY, PZ,
+        RightX, TrueUpX, BackX,
+        RightY, TrueUpY, BackY,
+        RightZ, TrueUpZ, BackZ)
+end
+
+-- CFrame.fromMatrix(position, right, up, back?) -- back defaults to
+-- normalize(right x up) if omitted.
+function CFrameLib.fromMatrix(Position, Right, Up, Back)
+    local PX, PY, PZ = ToXYZ(Position)
+    local RX, RY, RZ = ToXYZ(Right)
+    local UX, UY, UZ = ToXYZ(Up)
+    local BX, BY, BZ
+    if Back then
+        BX, BY, BZ = ToXYZ(Back)
+    else
+        BX, BY, BZ = VecNormalize(VecCross(RX, RY, RZ, UX, UY, UZ))
+    end
+    return NewCFrameRaw(PX, PY, PZ, RX, UX, BX, RY, UY, BY, RZ, UZ, BZ)
+end
+
+-- CFrame.fromAxisAngle(axis, angle) -- Rodrigues' rotation formula.
+function CFrameLib.fromAxisAngle(Axis, Angle)
+    local AX, AY, AZ = ToXYZ(Axis)
+    AX, AY, AZ = VecNormalize(AX, AY, AZ)
+    local Cos, Sin = math.cos(Angle), math.sin(Angle)
+    local OneMinusCos = 1 - Cos
+
+    return NewCFrameRaw(0, 0, 0,
+        Cos + AX*AX*OneMinusCos,      AX*AY*OneMinusCos - AZ*Sin,    AX*AZ*OneMinusCos + AY*Sin,
+        AY*AX*OneMinusCos + AZ*Sin,   Cos + AY*AY*OneMinusCos,       AY*AZ*OneMinusCos - AX*Sin,
+        AZ*AX*OneMinusCos - AY*Sin,   AZ*AY*OneMinusCos + AX*Sin,    Cos + AZ*AZ*OneMinusCos)
+end
+
+-- CFrame.Angles(rx, ry, rz) / CFrame.fromEulerAnglesXYZ(rx, ry, rz) --
+-- consecutively rotates about the object-space X, then Y, then Z axes
+-- (radians). Combined matrix is Rx * Ry * Rz. Only XYZ order is implemented --
+-- Roblox's newer CFrame.fromEulerAngles(rx,ry,rz,order) supports 6 orders via
+-- Enum.RotationOrder; ToEulerAngles below has the same XYZ-only limitation.
+function CFrameLib.fromEulerAnglesXYZ(RX, RY, RZ)
+    local CX, SX = math.cos(RX), math.sin(RX)
+    local CY, SY = math.cos(RY), math.sin(RY)
+    local CZ, SZ = math.cos(RZ), math.sin(RZ)
+
+    local M00,M01,M02,M10,M11,M12,M20,M21,M22 = MatMul3(
+        1,0,0, 0,CX,-SX, 0,SX,CX,
+        CY,0,SY, 0,1,0, -SY,0,CY
+    )
+    local R00,R01,R02,R10,R11,R12,R20,R21,R22 = MatMul3(
+        M00,M01,M02,M10,M11,M12,M20,M21,M22,
+        CZ,-SZ,0, SZ,CZ,0, 0,0,1
+    )
+    return NewCFrameRaw(0, 0, 0, R00,R01,R02,R10,R11,R12,R20,R21,R22)
+end
+CFrameLib.Angles = CFrameLib.fromEulerAnglesXYZ
+CFrameLib.fromOrientation = CFrameLib.fromEulerAnglesXYZ
+
+function CFrameLib.fromEulerAngles(RX, RY, RZ, Order)
+    return CFrameLib.fromEulerAnglesXYZ(RX, RY, RZ) -- Order ignored, see note above
+end
+
+-- // Computed fields \\ --
+
+local CFrameComputed = {
+    Position = function(self) return Vector3.new(self.X, self.Y, self.Z) end,
+    RightVector = function(self) return Vector3.new(self.R00, self.R10, self.R20) end,
+    UpVector = function(self) return Vector3.new(self.R01, self.R11, self.R21) end,
+    LookVector = function(self) return Vector3.new(-self.R02, -self.R12, -self.R22) end,
+    XVector = function(self) return Vector3.new(self.R00, self.R10, self.R20) end,
+    YVector = function(self) return Vector3.new(self.R01, self.R11, self.R21) end,
+    ZVector = function(self) return Vector3.new(self.R02, self.R12, self.R22) end,
+}
+CFrameComputed.p = CFrameComputed.Position
+CFrameComputed.rightVector = CFrameComputed.RightVector
+CFrameComputed.upVector = CFrameComputed.UpVector
+CFrameComputed.lookVector = CFrameComputed.LookVector
+
+-- // Methods \\ --
+
+local CFrameMethods = {}
+
+function CFrameMethods:PointToWorldSpace(Point)
+    local PX, PY, PZ = ToXYZ(Point)
+    return Vector3.new(
+        self.X + self.R00*PX + self.R01*PY + self.R02*PZ,
+        self.Y + self.R10*PX + self.R11*PY + self.R12*PZ,
+        self.Z + self.R20*PX + self.R21*PY + self.R22*PZ)
+end
+
+function CFrameMethods:VectorToWorldSpace(Point)
+    local PX, PY, PZ = ToXYZ(Point)
+    return Vector3.new(
+        self.R00*PX + self.R01*PY + self.R02*PZ,
+        self.R10*PX + self.R11*PY + self.R12*PZ,
+        self.R20*PX + self.R21*PY + self.R22*PZ)
+end
+
+function CFrameMethods:PointToObjectSpace(Point)
+    local PX, PY, PZ = ToXYZ(Point)
+    local DX, DY, DZ = PX - self.X, PY - self.Y, PZ - self.Z
+    -- multiply by R^T (transpose = inverse, since the rotation is orthonormal)
+    return Vector3.new(
+        self.R00*DX + self.R10*DY + self.R20*DZ,
+        self.R01*DX + self.R11*DY + self.R21*DZ,
+        self.R02*DX + self.R12*DY + self.R22*DZ)
+end
+
+function CFrameMethods:VectorToObjectSpace(Point)
+    local PX, PY, PZ = ToXYZ(Point)
+    return Vector3.new(
+        self.R00*PX + self.R10*PY + self.R20*PZ,
+        self.R01*PX + self.R11*PY + self.R21*PZ,
+        self.R02*PX + self.R12*PY + self.R22*PZ)
+end
+
+function CFrameMethods:Inverse()
+    local IX = -(self.R00*self.X + self.R10*self.Y + self.R20*self.Z)
+    local IY = -(self.R01*self.X + self.R11*self.Y + self.R21*self.Z)
+    local IZ = -(self.R02*self.X + self.R12*self.Y + self.R22*self.Z)
+    return NewCFrameRaw(IX, IY, IZ,
+        self.R00, self.R10, self.R20,
+        self.R01, self.R11, self.R21,
+        self.R02, self.R12, self.R22)
+end
+
+function CFrameMethods:ToWorldSpace(Other)
+    return self * Other
+end
+
+function CFrameMethods:ToObjectSpace(Other)
+    return self:Inverse() * Other
+end
+
+function CFrameMethods:GetComponents()
+    return self.X, self.Y, self.Z,
+        self.R00, self.R01, self.R02,
+        self.R10, self.R11, self.R12,
+        self.R20, self.R21, self.R22
+end
+CFrameMethods.components = CFrameMethods.GetComponents
+
+function CFrameMethods:ToEulerAnglesXYZ()
+    local Clamped = math.clamp(self.R02, -1, 1)
+    local RY = math.asin(Clamped)
+    local RX, RZ
+    if math.abs(self.R02) < 0.99999 then
+        RX = math.atan2(-self.R12, self.R22)
+        RZ = math.atan2(-self.R01, self.R00)
+    else
+        -- Gimbal lock (RY at +-90 degrees): RX/RZ aren't independently
+        -- recoverable, so RZ is pinned to 0 and RX absorbs the remainder.
+        RX = math.atan2(self.R21, self.R11)
+        RZ = 0
+    end
+    return RX, RY, RZ
+end
+CFrameMethods.ToOrientation = CFrameMethods.ToEulerAnglesXYZ
+
+-- Order ignored (XYZ only) -- see the note on fromEulerAngles above.
+function CFrameMethods:ToEulerAngles(Order)
+    return self:ToEulerAnglesXYZ()
+end
+
+function CFrameMethods:ToAxisAngle()
+    local Trace = self.R00 + self.R11 + self.R22
+    local Angle = math.acos(math.clamp((Trace - 1) * 0.5, -1, 1))
+
+    if Angle < 1e-6 then
+        return Vector3.new(1, 0, 0), 0
+    end
+
+    local AX, AY, AZ = self.R21 - self.R12, self.R02 - self.R20, self.R10 - self.R01
+    local Len = VecLen(AX, AY, AZ)
+    if Len < 1e-6 then
+        -- ~180 degree rotation -- the antisymmetric part above vanishes, so
+        -- pull the axis from whichever diagonal term is largest instead.
+        if self.R00 >= self.R11 and self.R00 >= self.R22 then
+            AX, AY, AZ = math.sqrt(math.max(0, (self.R00 + 1) * 0.5)), 0, 0
+        elseif self.R11 >= self.R22 then
+            AX, AY, AZ = 0, math.sqrt(math.max(0, (self.R11 + 1) * 0.5)), 0
+        else
+            AX, AY, AZ = 0, 0, math.sqrt(math.max(0, (self.R22 + 1) * 0.5))
+        end
+        Len = VecLen(AX, AY, AZ)
+        if Len == 0 then AX, AY, AZ, Len = 1, 0, 0, 1 end
+    end
+
+    return Vector3.new(AX / Len, AY / Len, AZ / Len), Angle
+end
+
+-- Position: linear interpolation. Rotation: proper spherical (slerp) via
+-- quaternions, not a naive per-component lerp of the matrix (which wouldn't
+-- stay orthonormal) -- matches how real Roblox CFrame:Lerp behaves.
+function CFrameMethods:Lerp(Goal, Alpha)
+    if not IsCFrame(Goal) then
+        error("CFrame:Lerp expects a CFrame", 2)
+    end
+    if Alpha == 0 then return self end
+    if Alpha == 1 then
+        return NewCFrameRaw(Goal.X, Goal.Y, Goal.Z, Goal.R00, Goal.R01, Goal.R02, Goal.R10, Goal.R11, Goal.R12, Goal.R20, Goal.R21, Goal.R22)
+    end
+
+    local PX = self.X + (Goal.X - self.X) * Alpha
+    local PY = self.Y + (Goal.Y - self.Y) * Alpha
+    local PZ = self.Z + (Goal.Z - self.Z) * Alpha
+
+    local Q1X, Q1Y, Q1Z, Q1W = MatrixToQuaternion(self.R00,self.R01,self.R02,self.R10,self.R11,self.R12,self.R20,self.R21,self.R22)
+    local Q2X, Q2Y, Q2Z, Q2W = MatrixToQuaternion(Goal.R00,Goal.R01,Goal.R02,Goal.R10,Goal.R11,Goal.R12,Goal.R20,Goal.R21,Goal.R22)
+
+    local Dot = Q1X*Q2X + Q1Y*Q2Y + Q1Z*Q2Z + Q1W*Q2W
+    if Dot < 0 then
+        Q2X, Q2Y, Q2Z, Q2W = -Q2X, -Q2Y, -Q2Z, -Q2W -- shortest path
+        Dot = -Dot
+    end
+    Dot = math.min(Dot, 1)
+
+    local RX, RY, RZ, RW
+    if Dot > 0.9995 then
+        -- Nearly identical rotations: linear interpolation + renormalize is a
+        -- fine approximation and avoids a near-zero divide below.
+        RX, RY, RZ, RW = Q1X + (Q2X-Q1X)*Alpha, Q1Y + (Q2Y-Q1Y)*Alpha, Q1Z + (Q2Z-Q1Z)*Alpha, Q1W + (Q2W-Q1W)*Alpha
+        local Len = math.sqrt(RX*RX + RY*RY + RZ*RZ + RW*RW)
+        if Len > 0 then RX, RY, RZ, RW = RX/Len, RY/Len, RZ/Len, RW/Len end
+    else
+        local Theta0 = math.acos(Dot)
+        local Theta = Theta0 * Alpha
+        local SinTheta0 = math.sin(Theta0)
+        local S1 = math.sin(Theta0 - Theta) / SinTheta0
+        local S2 = math.sin(Theta) / SinTheta0
+        RX, RY, RZ, RW = Q1X*S1 + Q2X*S2, Q1Y*S1 + Q2Y*S2, Q1Z*S1 + Q2Z*S2, Q1W*S1 + Q2W*S2
+    end
+
+    local R00,R01,R02,R10,R11,R12,R20,R21,R22 = QuaternionToMatrix(RX, RY, RZ, RW)
+    return NewCFrameRaw(PX, PY, PZ, R00,R01,R02,R10,R11,R12,R20,R21,R22)
+end
+
+-- // Metamethods \\ --
+
+CFrameMeta.__index = function(self, Key)
+    local Computed = CFrameComputed[Key]
+    if Computed then return Computed(self) end
+    return CFrameMethods[Key]
+end
+
+CFrameMeta.__mul = function(A, B)
+    if not IsCFrame(A) then
+        error("attempt to perform arithmetic (mul) on a non-CFrame value", 2)
+    end
+    if IsCFrame(B) then
+        local R00,R01,R02,R10,R11,R12,R20,R21,R22 = MatMul3(
+            A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22,
+            B.R00,B.R01,B.R02,B.R10,B.R11,B.R12,B.R20,B.R21,B.R22)
+        local PX = A.X + A.R00*B.X + A.R01*B.Y + A.R02*B.Z
+        local PY = A.Y + A.R10*B.X + A.R11*B.Y + A.R12*B.Z
+        local PZ = A.Z + A.R20*B.X + A.R21*B.Y + A.R22*B.Z
+        return NewCFrameRaw(PX, PY, PZ, R00,R01,R02,R10,R11,R12,R20,R21,R22)
+    end
+    return A:PointToWorldSpace(B) -- CFrame * Vector3-like -> world-space point
+end
+
+CFrameMeta.__add = function(A, B)
+    local BX, BY, BZ = ToXYZ(B)
+    return NewCFrameRaw(A.X+BX, A.Y+BY, A.Z+BZ, A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22)
+end
+
+CFrameMeta.__sub = function(A, B)
+    local BX, BY, BZ = ToXYZ(B)
+    return NewCFrameRaw(A.X-BX, A.Y-BY, A.Z-BZ, A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22)
+end
+
+CFrameMeta.__eq = function(A, B)
+    if not IsCFrame(A) or not IsCFrame(B) then return false end
+    return A.X==B.X and A.Y==B.Y and A.Z==B.Z
+        and A.R00==B.R00 and A.R01==B.R01 and A.R02==B.R02
+        and A.R10==B.R10 and A.R11==B.R11 and A.R12==B.R12
+        and A.R20==B.R20 and A.R21==B.R21 and A.R22==B.R22
+end
+
+CFrameMeta.__tostring = function(self)
+    return table.concat({
+        self.X, self.Y, self.Z,
+        self.R00, self.R01, self.R02,
+        self.R10, self.R11, self.R12,
+        self.R20, self.R21, self.R22,
+    }, ", ")
+end
+
+-- Best-effort: lets typeof(cf) == "CFrame" keep working for any code (this
+-- file's own TweenService included) that type-checks that way. Luau support
+-- for a table's __type isn't guaranteed everywhere, so TweenService below is
+-- ALSO switched to Global.Function:IsCFrame(...) as the guaranteed-correct
+-- check rather than relying on this alone.
+CFrameMeta.__type = "CFrame"
+
+CFrameLib.identity = NewCFrameRaw(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
+
+CFrame = CFrameLib
+_G.CFrame = CFrameLib
+Global.CFrame = CFrameLib
+
+-- ReadPartCFrame(Part) -> a fully-functional CFrame (this implementation, not
+-- Severe's broken native one) built from a live BasePart's current transform.
+-- Reads Position/RightVector/UpVector/LookVector -- confirmed-reliable native
+-- BasePart properties -- rather than touching the native .CFrame at all.
+function Global.Function:ReadPartCFrame(Part)
+    local Position, RightVector, UpVector, LookVector =
+        Part.Position, Part.RightVector, Part.UpVector, Part.LookVector
+    return CFrameLib.new(
+        Position.X, Position.Y, Position.Z,
+        RightVector.X, UpVector.X, -LookVector.X,
+        RightVector.Y, UpVector.Y, -LookVector.Y,
+        RightVector.Z, UpVector.Z, -LookVector.Z)
+end
+_G.ReadPartCFrame = function(Part) return Global.Function:ReadPartCFrame(Part) end
+
 -- // Property Registration \\ --
 
 Global.Function:DeclareScalar(Global.Properties.Boolean,
@@ -1061,6 +1655,38 @@ Global.Function:DeclareScalar(Global.Properties.Reference,
     end)
 
 Global.Function:DeclareEnum(Global.Properties.Enum)
+
+-- Script/LocalScript/ModuleScript:ByteCode -> { Pointer = number, Size = number }
+-- | nil. Reads through a two-level pointer chain: the script's own Bytecode
+-- field points to a ByteCode struct, which itself has Pointer (the compiled
+-- bytecode buffer's address) and Size (its length in bytes). Read-only --
+-- this only locates the raw buffer, it doesn't decode anything; pair with
+-- memory.readbuffer(Pointer, Size) for the bytes themselves.
+local function DeclareByteCode(Class, BytecodeOffset)
+    if BytecodeOffset == nil or Offsets.ByteCode.Pointer == nil or Offsets.ByteCode.Size == nil then
+        return
+    end
+    Global.Function:Declare(Class, "ByteCode", {
+        get = function(self)
+            local Struct = Global.Function:ReadU64Number(self.Data, BytecodeOffset)
+            if Struct == 0 then return nil end
+            return {
+                Pointer = Global.Function:ReadPointer(Struct + Offsets.ByteCode.Pointer),
+                Size = Global.Function:ReadPointer(Struct + Offsets.ByteCode.Size),
+            }
+        end,
+    })
+end
+
+DeclareByteCode("LocalScript", Offsets.LocalScript.Bytecode)
+DeclareByteCode("ModuleScript", Offsets.ModuleScript.Bytecode)
+-- Script's own dumped ByteCode offset is 0x0 -- the same address a C++
+-- object's vtable pointer normally occupies. Reading and dereferencing that
+-- blindly is a real crash risk (unlike every other offset in this file), so
+-- it's deliberately left unimplemented here. LocalScript/ModuleScript instead
+-- have a separate, distinctly non-zero `Bytecode` field that doesn't have
+-- this problem -- if a trustworthy offset for plain Script ever turns up,
+-- this is a one-line addition.
 
 -- Shared absolute-address reader/writer closures for indirect (pointer-chained)
 -- properties.
@@ -1560,7 +2186,6 @@ _G.Easing = Global.Easing
 --   BasePart:GetBoundingBox()   -- that single part
 --   GetBoundingBox(part)        -- global, single part
 --   GetBoundingBox({ parts })   -- global, an array of parts
--- Models use GetChildren (shallow) -- GetDescendants is expensive.
 local BasePartClassSet = {
     Part = true, MeshPart = true, UnionOperation = true, TrussPart = true,
     WedgePart = true, CornerWedgePart = true, SpawnLocation = true,
@@ -1654,6 +2279,757 @@ local function GetBoundingBox(Argument)
     return CFrame.new(0, 0, 0), vector.create(0, 0, 0)
 end
 _G.GetBoundingBox = GetBoundingBox
+
+-- // Custom Enums \\ --
+-- Roblox scripts reach enum values as Enum.Category.ItemName -- a stable
+-- object with .Name/.Value, comparable with ==, listable via
+-- :GetEnumItems(). This project's own `Enum` global doesn't support adding new
+-- categories the way real Roblox's does (categories there come from the
+-- engine's own EnumDescriptor reflection, not a plain writable table), so this
+-- builds the same shape by hand for enums *this project* defines (values that
+-- are fixed constants from the engine's own headers, not something read live
+-- from memory -- unlike Enum.Material etc., which are populated from an actual
+-- property's value).
+--
+-- BuildEnumCategory(Name, Items) -> Category, where Items is a plain
+-- { ItemName = numericValue } table. Category.ItemName returns the SAME cached
+-- item table on every access (so == works), Category:GetEnumItems() returns
+-- them all sorted by value, Category:FromValue(n) reverse-looks-up by value.
+function Global.Function:BuildEnumCategory(CategoryName, Items)
+    local Category = {}
+    local ItemsByName = {}
+    local ItemsByValue = {}
+    local Ordered = {}
+
+    for Name, Value in Items do
+        local Item = setmetatable({
+            Name = Name,
+            Value = Value,
+            EnumType = Category,
+        }, {
+            __tostring = function() return "Enum." .. CategoryName .. "." .. Name end,
+        })
+        ItemsByName[Name] = Item
+        ItemsByValue[Value] = Item
+        table.insert(Ordered, Item)
+    end
+
+    table.sort(Ordered, function(A, B) return A.Value < B.Value end)
+
+    setmetatable(Category, {
+        __index = function(_, Key)
+            if Key == "GetEnumItems" then
+                return function() return Ordered end
+            end
+            if Key == "FromValue" then
+                return function(_, Value) return ItemsByValue[Value] end
+            end
+            return ItemsByName[Key]
+        end,
+        __tostring = function() return "Enum." .. CategoryName end,
+    })
+
+    return Category
+end
+
+-- Enum.ReflectionType -- the engine's internal tag for what KIND of value a
+-- reflected property/field holds (Bool, Int, Vector3, Enum, Instance, ...).
+-- This is the same type system PropertyDescriptor::TType (below) points into;
+-- these are the fixed numeric IDs behind it, straight from the engine's own
+-- enums.h, not something that changes per game version the way struct offsets
+-- do.
+Global.ReflectionType = Global.Function:BuildEnumCategory("ReflectionType", {
+    Void = 0x0, Bool = 0x1, Int = 0x2, Int64 = 0x3, Float = 0x4, Double = 0x5, String = 0x6,
+    ProtectedString = 0x7, Instance = 0x8, Instances = 0x9, Ray = 0xA, Vector2 = 0xB, Vector3 = 0xC,
+    Vector2Int16 = 0xD, Vector3Int16 = 0xE, Rect2d = 0xF, CoordinateFrame = 0x10, Color3 = 0x11,
+    Color3uint8 = 0x12, UDim = 0x13, UDim2 = 0x14, Faces = 0x15, Axes = 0x16, Region3 = 0x17,
+    Region3Int16 = 0x18, CellId = 0x19, GuidData = 0x1A, PhysicalProperties = 0x1B, BrickColor = 0x1C,
+    SystemAddress = 0x1D, BinaryString = 0x1E, Surface = 0x1F, Enum = 0x20, Property = 0x21,
+    Tuple = 0x22, ValueArray = 0x23, ValueTable = 0x24, ValueMap = 0x25, Variant = 0x26,
+    GenericFunction = 0x27, WeakFunctionRef = 0x28, ColorSequence = 0x29, ColorSequenceKeypoint = 0x2A,
+    NumberRange = 0x2B, NumberSequence = 0x2C, NumberSequenceKeypoint = 0x2D, InputObject = 0x2E,
+    Connection = 0x2F, ContentId = 0x30, DescribedBase = 0x31, RefType = 0x32, QFont = 0x33,
+    QDir = 0x34, EventInstance = 0x35, TweenInfo = 0x36, DockWidgetPluginGuiInfo = 0x37,
+    PluginDrag = 0x38, Random = 0x39, PathWaypoint = 0x3A, FloatCurveKey = 0x3B, RotationCurveKey = 0x3C,
+    SharedString = 0x3D, DateTime = 0x3E, RaycastParams = 0x3F, RaycastResult = 0x40, OverlapParams = 0x41,
+    LazyTable = 0x42, DebugTable = 0x43, CatalogSearchParams = 0x44, OptionalCoordinateFrame = 0x45,
+    CSGPropertyData = 0x46, UniqueId = 0x47, Font = 0x48, Blackboard = 0x49, Max = 0x4A,
+})
+
+_G.ReflectionType = Global.ReflectionType
+
+-- Best-effort: also expose it as Enum.ReflectionType, matching real Roblox's
+-- Enum.Category.Item access style, in case this environment's `Enum` global
+-- happens to be a plain writable table. Falls back silently to the guaranteed
+-- _G.ReflectionType path if `Enum` rejects new keys (native/protected, like
+-- real Roblox's actual Enum).
+pcall(function() Enum.ReflectionType = Global.ReflectionType end)
+
+-- // Reflection: Property / Event / Function Descriptors \\ --
+-- Roblox keeps every class's members (properties, events, functions) as flat,
+-- 0x10-spaced pointer lists hanging off its ClassDescriptor. This walks those
+-- lists purely via memory reads to ENUMERATE names/types and to resolve a
+-- function's CURRENT native address by name (more reliable across game updates
+-- than a static offset from a version-pinned dump). It does NOT and CANNOT call
+-- anything with that address -- this environment exposes no primitive to invoke
+-- native code from Luau, so every "Function" value returned below is inert data.
+-- Exposed as globals rather than Instance.declare methods: these aren't real
+-- Roblox members, and Instance.declare validates names against the engine's own
+-- reflection table (see [[instance-declare-api]]).
+
+-- Reads a Roblox reflection Name (an interned string) at Address as a Luau
+-- string ("" if Address is null).
+local function ReadReflectionName(Address)
+    if not Address or Address == 0 then return "" end
+    return memory.readstring(Address)
+end
+
+-- Walks one ClassDescriptor member list (PropertyDescriptors / EventDescriptors
+-- / FunctionDescriptors) -- a flat array of 0x10-spaced pointers, null-terminated
+-- -- calling Visit(DescriptorAddress, Name) per live entry. Visit may return
+-- `true` to stop the walk early. Hard-caps iterations so a corrupt list can't
+-- spin forever (same guarded-loop style as Animator:GetPlayingAnimationTracks).
+local function WalkDescriptorList(ListAddress, Visit)
+    if not ListAddress or ListAddress == 0 or Offsets.Descriptor.Name == nil then
+        return
+    end
+
+    local Cursor = ListAddress
+    for _ = 1, 4096 do
+        local DescriptorAddress = Global.Function:ReadPointer(Cursor)
+        if not DescriptorAddress or DescriptorAddress == 0 then break end
+
+        local Name = ReadReflectionName(Global.Function:ReadPointer(DescriptorAddress + Offsets.Descriptor.Name))
+        if Visit(DescriptorAddress, Name) == true then break end
+
+        Cursor += 0x10
+    end
+end
+
+-- Resolves Object's ClassDescriptor address (0 if the offset is missing).
+local function GetClassDescriptor(Object)
+    if Offsets.Instance.ClassDescriptor == nil then return 0 end
+    return Global.Function:ReadU64Number(Object, Offsets.Instance.ClassDescriptor)
+end
+
+-- Reads one of ClassDescriptor's three member lists off Object (0 if the
+-- offset is missing from the dump).
+local function GetDescriptorList(Object, ListOffset)
+    if ListOffset == nil then return 0 end
+    local ClassDescriptor = GetClassDescriptor(Object)
+    if ClassDescriptor == 0 then return 0 end
+    return Global.Function:ReadPointer(ClassDescriptor + ListOffset)
+end
+
+-- GetInstanceProperties(Object) -> { { Name = string, Type = string, ReflectionType = EnumItem? } }
+-- Enumerates Object's class's properties (including inherited ones). The
+-- PropertyDescriptors list actually holds every inherited descriptor --
+-- properties, events, AND functions mixed together -- so an entry only counts
+-- as a property here if its TType pointer is non-null (Roblox's own rule for
+-- telling them apart). ReflectionType is Enum.ReflectionType's matching item
+-- when Type's name happens to line up with it, nil otherwise (best-effort).
+local function GetInstanceProperties(Object)
+    local Results = {}
+    if typeof(Object) ~= "Instance" or Offsets.PropertyDescriptor.TType == nil then
+        return Results
+    end
+
+    local List = GetDescriptorList(Object, Offsets.ClassDescriptor.PropertyDescriptors)
+    WalkDescriptorList(List, function(DescriptorAddress, Name)
+        if Name == "" then return end
+
+        local TypeAddress = Global.Function:ReadPointer(DescriptorAddress + Offsets.PropertyDescriptor.TType)
+        if not TypeAddress or TypeAddress == 0 then return end -- event/function entry, not a property
+
+        local TypeName = Offsets.Descriptor.Name
+            and ReadReflectionName(Global.Function:ReadPointer(TypeAddress + Offsets.Descriptor.Name))
+            or ""
+        -- ReflectionType is filled in when TypeName happens to match one of its
+        -- member names (e.g. "Vector3", "Bool") -- nil otherwise. Best-effort:
+        -- reflection type names don't always match 1:1 with ReflectionType's
+        -- own naming (e.g. plain "string"/"bool" vs "String"/"Bool"), so this
+        -- can miss; Type (the raw name string) is always populated regardless.
+        table.insert(Results, {
+            Name = Name,
+            Type = TypeName ~= "" and TypeName or "?",
+            ReflectionType = Global.ReflectionType[TypeName],
+        })
+    end)
+
+    return Results
+end
+
+-- GetInstanceEvents(Object) -> { string }
+-- Names only -- EventDescriptors is already filtered to events by Roblox's own
+-- reflection layout, no TType check needed.
+local function GetInstanceEvents(Object)
+    local Results = {}
+    if typeof(Object) ~= "Instance" then return Results end
+
+    local List = GetDescriptorList(Object, Offsets.ClassDescriptor.EventDescriptors)
+    WalkDescriptorList(List, function(_, Name)
+        if Name ~= "" then table.insert(Results, Name) end
+    end)
+
+    return Results
+end
+
+-- GetInstanceMethods(Object) -> { { Name = string, Function = number } }
+-- `Function` is the CURRENT resolved native address of that method's
+-- implementation, read live off this exact running process -- more reliable
+-- than a static offset from a version-pinned dump. IMPORTANT: this is inert
+-- data, not a callable value -- nothing here can actually be invoked; this
+-- environment has no primitive to run native code from Luau.
+local function GetInstanceMethods(Object)
+    local Results = {}
+    if typeof(Object) ~= "Instance" or Offsets.FunctionDescriptor.Function == nil then
+        return Results
+    end
+
+    local List = GetDescriptorList(Object, Offsets.ClassDescriptor.FunctionDescriptors)
+    WalkDescriptorList(List, function(DescriptorAddress, Name)
+        if Name == "" then return end
+        local FunctionAddress = Global.Function:ReadPointer(DescriptorAddress + Offsets.FunctionDescriptor.Function)
+        table.insert(Results, { Name = Name, Function = FunctionAddress or 0 })
+    end)
+
+    return Results
+end
+
+-- ResolveInstanceFunction(Object, Name) -> number?
+-- Looks up ONE function by name in Object's class's FunctionDescriptors and
+-- returns its current native address, or nil if not found. Same "inert data,
+-- not callable" caveat as GetInstanceMethods.
+local function ResolveInstanceFunction(Object, Name)
+    if typeof(Object) ~= "Instance" or type(Name) ~= "string"
+        or Offsets.FunctionDescriptor.Function == nil then
+        return nil
+    end
+
+    local List = GetDescriptorList(Object, Offsets.ClassDescriptor.FunctionDescriptors)
+    local Found = nil
+
+    WalkDescriptorList(List, function(DescriptorAddress, EntryName)
+        if EntryName ~= Name then return end
+        local FunctionAddress = Global.Function:ReadPointer(DescriptorAddress + Offsets.FunctionDescriptor.Function)
+        if FunctionAddress and FunctionAddress ~= 0 then
+            Found = FunctionAddress
+            return true
+        end
+    end)
+
+    return Found
+end
+
+_G.GetInstanceProperties = GetInstanceProperties
+_G.GetInstanceEvents = GetInstanceEvents
+_G.GetInstanceMethods = GetInstanceMethods
+_G.ResolveInstanceFunction = ResolveInstanceFunction
+
+-- // Mesh Cache Reader \\ --
+-- Every mesh Roblox has loaded sits in an LRU cache owned by MeshContentProvider
+-- (a circular linked list keyed by MeshId, the asset URL). This walks that list
+-- purely via memory reads to pull a mesh's raw vertex/face/AABB data straight out
+-- of the engine's own decoded copy -- no re-downloading or re-parsing needed, and
+-- (like everything else added this way) it's pure data extraction: nothing here
+-- calls into the engine.
+
+local CachedMeshContentProvider -- resolved lazily, memoized while it stays parented
+
+-- Finds the MeshContentProvider service. Not every class name responds to
+-- GetService the same way across environments, so this also falls back to
+-- scanning game's direct children by ClassName.
+local function GetMeshContentProvider()
+    if CachedMeshContentProvider and CachedMeshContentProvider.Parent then
+        return CachedMeshContentProvider
+    end
+
+    local Ok, Service = pcall(function() return game:GetService("MeshContentProvider") end)
+    if Ok and Service then
+        CachedMeshContentProvider = Service
+        return Service
+    end
+
+    for _, Child in game:GetChildren() do
+        if Child.ClassName == "MeshContentProvider" then
+            CachedMeshContentProvider = Child
+            return Child
+        end
+    end
+
+    return nil
+end
+
+-- A MeshId can show up in a few textual shapes ("rbxassetid://123",
+-- an assetdelivery URL, or a bare id) depending on where it came from. Pull out
+-- the trailing run of digits so two different-looking strings for the same
+-- asset still compare equal.
+local function NormalizeAssetId(MeshIdString)
+    if type(MeshIdString) ~= "string" then return nil end
+    return MeshIdString:match("(%d+)%D*$")
+end
+
+-- Reads a FileMeshData at Address into { Vertices = {vector...}, Faces =
+-- {{a,b,c}...}, AabbMin =, AabbMax = }, or nil on a bad/implausible read.
+-- Vertices/faces are bulk-read as raw buffers (one memory call each) and parsed
+-- with the native `buffer` library -- one round trip instead of one per float,
+-- which matters once a mesh has thousands of vertices.
+local function ReadFileMeshData(Address)
+    local VertexStart = Global.Function:ReadPointer(Address + Offsets.FileMeshData.Vertices)
+    local VertexEnd = Global.Function:ReadPointer(Address + Offsets.FileMeshData.VerticesEnd)
+    local FaceStart = Global.Function:ReadPointer(Address + Offsets.FileMeshData.Faces)
+    local FaceEnd = Global.Function:ReadPointer(Address + Offsets.FileMeshData.FacesEnd)
+
+    if VertexStart == 0 or FaceStart == 0 or VertexEnd < VertexStart or FaceEnd < FaceStart then
+        return nil
+    end
+
+    local VertexStride, FaceStride = 40, 12
+    local VertexCount = math.floor((VertexEnd - VertexStart) / VertexStride)
+    local FaceCount = math.floor((FaceEnd - FaceStart) / FaceStride)
+
+    -- Empty, or implausibly large (almost certainly a bad/garbage read this far
+    -- down a pointer chain) -- bail rather than trust it.
+    if VertexCount == 0 or FaceCount == 0 or VertexCount > 200000 or FaceCount > 200000 then
+        return nil
+    end
+
+    local OkVertices, VertexBuffer = pcall(memory.readbuffer, VertexStart, VertexCount * VertexStride)
+    local OkFaces, FaceBuffer = pcall(memory.readbuffer, FaceStart, FaceCount * FaceStride)
+    if not OkVertices or not OkFaces then return nil end
+
+    local Vertices = table.create(VertexCount)
+    for Index = 0, VertexCount - 1 do
+        local Base = Index * VertexStride
+        Vertices[Index + 1] = vector.create(
+            buffer.readf32(VertexBuffer, Base),
+            buffer.readf32(VertexBuffer, Base + 4),
+            buffer.readf32(VertexBuffer, Base + 8)
+        )
+    end
+
+    local Faces = table.create(FaceCount)
+    for Index = 0, FaceCount - 1 do
+        local Base = Index * FaceStride
+        -- +1: the engine's indices are 0-based, Lua arrays are 1-based.
+        Faces[Index + 1] = {
+            buffer.readu32(FaceBuffer, Base) + 1,
+            buffer.readu32(FaceBuffer, Base + 4) + 1,
+            buffer.readu32(FaceBuffer, Base + 8) + 1,
+        }
+    end
+
+    return {
+        Vertices = Vertices,
+        Faces = Faces,
+        AabbMin = ReadVector3Absolute(Address + Offsets.FileMeshData.AabbMin),
+        AabbMax = ReadVector3Absolute(Address + Offsets.FileMeshData.AabbMax),
+    }
+end
+
+-- GetCachedMeshData(MeshId) -> { Vertices, Faces, AabbMin, AabbMax } | nil
+-- Walks MeshContentProvider's LRU cache looking for MeshId (matched by trailing
+-- asset id, falling back to an exact string match) and returns its raw geometry.
+-- Returns nil if the mesh isn't currently cached (never rendered, or evicted
+-- since) or the required offsets aren't available.
+local function GetCachedMeshData(MeshId)
+    if type(MeshId) ~= "string" or MeshId == "" then return nil end
+    if Offsets.MeshContentProvider.LruHolder == nil or Offsets.LruHolder.MemEnforcedLRUCache == nil
+        or Offsets.MemEnforcedLRUCache.Head == nil or Offsets.LruNode.Next == nil
+        or Offsets.LruNode.MeshId == nil or Offsets.LruNode.CachedItem == nil
+        or Offsets.CachedItem.FileMeshData == nil then
+        return nil
+    end
+
+    local Provider = GetMeshContentProvider()
+    if not Provider then return nil end
+
+    local Holder = Global.Function:ReadU64Number(Provider, Offsets.MeshContentProvider.LruHolder)
+    if Holder == 0 then return nil end
+    local Cache = Global.Function:ReadPointer(Holder + Offsets.LruHolder.MemEnforcedLRUCache)
+    if Cache == 0 then return nil end
+    local Sentinel = Global.Function:ReadPointer(Cache + Offsets.MemEnforcedLRUCache.Head)
+    if Sentinel == 0 then return nil end
+
+    local TargetId = NormalizeAssetId(MeshId)
+    local Node = Global.Function:ReadPointer(Sentinel + Offsets.LruNode.Next)
+
+    for _ = 1, 8192 do -- hard cap: never spin forever on a corrupt/broken ring
+        if Node == 0 or Node == Sentinel then break end
+
+        local NodeMeshId = memory.readstring(Node + Offsets.LruNode.MeshId)
+        if NodeMeshId == MeshId or (TargetId and NormalizeAssetId(NodeMeshId) == TargetId) then
+            local Item = Global.Function:ReadPointer(Node + Offsets.LruNode.CachedItem)
+            if Item == 0 then return nil end
+            local FileMeshData = Global.Function:ReadPointer(Item + Offsets.CachedItem.FileMeshData)
+            if FileMeshData == 0 then return nil end
+            return ReadFileMeshData(FileMeshData)
+        end
+
+        Node = Global.Function:ReadPointer(Node + Offsets.LruNode.Next)
+    end
+
+    return nil -- not currently cached
+end
+
+_G.GetCachedMeshData = GetCachedMeshData
+
+-- // MeshContentProvider.Render -- live mesh wireframe rendering \\ --
+-- Draws a live screen-space wireframe around a MeshPart, or every direct-child
+-- MeshPart of a Model, built on GetCachedMeshData above: every triangle edge of
+-- the mesh, drawn unconditionally (no facing test, no smoothing).
+--   _G.MeshContentProvider.Render(Instance, { Color=, Thickness=, Opacity= })
+--   _G.MeshContentProvider.Stop(Instance)
+--
+-- When Instance is a Model, every direct-child MeshPart (GetChildren, not
+-- GetDescendants -- cheaper, and a nested MeshPart under a sub-folder won't be
+-- found; Render that sub-instance directly if needed) gets tracked and drawn
+-- independently. Model children are rescanned every 1.8s for newly-added
+-- MeshParts (e.g. an equipped tool); removed/destroyed parts are dropped as
+-- soon as they're noticed, no need to wait for a rescan.
+--
+-- (A smooth front/back-facing silhouette mode was tried here and pulled for
+-- now -- it worked but wasn't clean enough to ship. May come back later.)
+
+local Camera = game.Workspace.CurrentCamera
+
+local RenderGroups = {} -- Instance (as passed to Render) -> GroupState
+local MeshTopologyCache = {} -- MeshId -> candidate edge list, shared by every group
+
+-- Packs two 1-based vertex indices (min, max) into one number so both windings
+-- of the same edge collide to the same table key.
+local function MeshEdgeKey(A, B)
+    if A > B then A, B = B, A end
+    return A * 1000000 + B
+end
+
+-- Roblox mesh vertex buffers commonly duplicate a vertex along a UV seam (the
+-- front/back texture seam, the poles of a sphere-style UV mapping, the
+-- boundary of a separate UV island like eyes/mouth on a head) -- the duplicate
+-- sits at the EXACT SAME position but a DIFFERENT vertex index, since it needs
+-- its own UV coordinate on that side of the seam. Edge adjacency built purely
+-- from vertex indices treats every one of those seam edges as a false
+-- "boundary" (the triangle on the other side reaches it through the duplicate
+-- index, so this exact index pair only sees one face) -- and a boundary edge
+-- is drawn unconditionally, producing seam rings/splits that have nothing to
+-- do with the actual silhouette. Welding vertices that share a position
+-- (within a tolerance scaled to the mesh's own AABB diagonal, so it adapts to
+-- whatever unit scale a given mesh happens to be authored in) before building
+-- the edge graph fixes it: both sides of a UV seam recognize each other as the
+-- same vertex, so a real interior edge stays interior.
+local function WeldedMeshVertexIndex(MeshData)
+    local AabbMin, AabbMax = MeshData.AabbMin, MeshData.AabbMax
+    local DiagX, DiagY, DiagZ = AabbMax.x - AabbMin.x, AabbMax.y - AabbMin.y, AabbMax.z - AabbMin.z
+    local Diagonal = math.sqrt(DiagX * DiagX + DiagY * DiagY + DiagZ * DiagZ)
+    local CellSize = Diagonal > 0 and Diagonal * 0.0001 or 1e-5
+
+    local PositionToIndex = {}
+    local Welded = table.create(#MeshData.Vertices)
+
+    for Index, V in MeshData.Vertices do
+        local Key = math.floor(V.x / CellSize + 0.5) .. "|"
+            .. math.floor(V.y / CellSize + 0.5) .. "|"
+            .. math.floor(V.z / CellSize + 0.5)
+        local Canonical = PositionToIndex[Key]
+        if not Canonical then
+            Canonical = Index
+            PositionToIndex[Key] = Index
+        end
+        Welded[Index] = Canonical
+    end
+
+    return Welded
+end
+
+-- Builds the deduplicated (welded) edge list once per mesh -- every entry gets
+-- drawn unconditionally for the wireframe, so this is really just "every edge
+-- of the mesh, without the duplicate-per-triangle-side redundancy." Pure
+-- topology -- it never changes for a given mesh -- so it's built once per
+-- MeshId and reused by every part/group that references that mesh.
+local function BuildMeshTopology(MeshData)
+    local Welded = WeldedMeshVertexIndex(MeshData)
+    local Edges = {} -- EdgeKey -> { A, B, Faces = { FaceIndex, ... } }
+
+    local function AddEdge(A, B, FaceIndex)
+        local WeldedA, WeldedB = Welded[A], Welded[B]
+        if WeldedA == WeldedB then return end -- degenerate: a sliver triangle at a seam corner
+        local Key = MeshEdgeKey(WeldedA, WeldedB)
+        local Edge = Edges[Key]
+        if not Edge then
+            Edge = { A = WeldedA, B = WeldedB, Faces = {} }
+            Edges[Key] = Edge
+        end
+        table.insert(Edge.Faces, FaceIndex)
+    end
+
+    for FaceIndex, Face in MeshData.Faces do
+        AddEdge(Face[1], Face[2], FaceIndex)
+        AddEdge(Face[2], Face[3], FaceIndex)
+        AddEdge(Face[3], Face[1], FaceIndex)
+    end
+
+    -- Skip edges shared by 3+ faces -- non-manifold (rare, usually a modeling
+    -- error in the source mesh) -- rather than guessing which to draw.
+    local Candidates = {}
+    for _, Edge in Edges do
+        if #Edge.Faces == 1 or #Edge.Faces == 2 then
+            table.insert(Candidates, Edge)
+        end
+    end
+
+    return Candidates
+end
+
+local function GetMeshTopology(MeshId, MeshData)
+    local Cached = MeshTopologyCache[MeshId]
+    if Cached then return Cached end
+    local Topology = BuildMeshTopology(MeshData)
+    MeshTopologyCache[MeshId] = Topology
+    return Topology
+end
+
+-- Reads a part's position/orientation/size out as plain numbers. CFrame itself
+-- isn't usable in this environment (no operators, no :PointToWorldSpace) --
+-- the local-mesh-space -> world-space transform below works off
+-- Position/RightVector/UpVector/LookVector instead, which read fine as
+-- ordinary properties.
+local function ReadPartBasis(Part)
+    local Position, RightVector, UpVector, LookVector, Size =
+        Part.Position, Part.RightVector, Part.UpVector, Part.LookVector, Part.Size
+    return {
+        PosX = Position.X, PosY = Position.Y, PosZ = Position.Z,
+        RightX = RightVector.X, RightY = RightVector.Y, RightZ = RightVector.Z,
+        UpX = UpVector.X, UpY = UpVector.Y, UpZ = UpVector.Z,
+        LookX = LookVector.X, LookY = LookVector.Y, LookZ = LookVector.Z,
+        SizeX = Size.X, SizeY = Size.Y, SizeZ = Size.Z,
+    }
+end
+
+-- MeshPart auto-fits its authored geometry to `.Size`: the scale factor per
+-- axis is Size / (AabbMax - AabbMin), and the mesh's own AABB center becomes
+-- the part's origin. Returns a function from local mesh-space vertex (native
+-- vector, from MeshData.Vertices) to world-space position (also native vector
+-- -- Vector3 arithmetic in this environment degrades to native vector anyway,
+-- which only exposes vector.cross()/vector.dot() as library functions, never
+-- as colon methods, so everything stays in that type consistently).
+local function BuildMeshTransform(Basis, MeshData)
+    local AabbMin, AabbMax = MeshData.AabbMin, MeshData.AabbMax
+
+    local ExtentX = AabbMax.x - AabbMin.x
+    local ExtentY = AabbMax.y - AabbMin.y
+    local ExtentZ = AabbMax.z - AabbMin.z
+    if ExtentX == 0 then ExtentX = 1 end
+    if ExtentY == 0 then ExtentY = 1 end
+    if ExtentZ == 0 then ExtentZ = 1 end
+
+    local ScaleX, ScaleY, ScaleZ = Basis.SizeX / ExtentX, Basis.SizeY / ExtentY, Basis.SizeZ / ExtentZ
+    local CenterX = (AabbMin.x + AabbMax.x) * 0.5
+    local CenterY = (AabbMin.y + AabbMax.y) * 0.5
+    local CenterZ = (AabbMin.z + AabbMax.z) * 0.5
+
+    return function(LocalVertex)
+        local PointX = (LocalVertex.x - CenterX) * ScaleX
+        local PointY = (LocalVertex.y - CenterY) * ScaleY
+        local PointZ = (LocalVertex.z - CenterZ) * ScaleZ
+
+        -- Local +Z is -LookVector (Roblox's LookVector points down local -Z).
+        return vector.create(
+            Basis.PosX + Basis.RightX * PointX + Basis.UpX * PointY - Basis.LookX * PointZ,
+            Basis.PosY + Basis.RightY * PointX + Basis.UpY * PointY - Basis.LookY * PointZ,
+            Basis.PosZ + Basis.RightZ * PointX + Basis.UpZ * PointY - Basis.LookZ * PointZ
+        )
+    end
+end
+
+local function MeshContentProviderEnsureLines(PartState, Count, Options)
+    while #PartState.Lines < Count do
+        local NewLine = Line.new()
+        NewLine.Thickness = Options.Thickness or 1
+        NewLine.Color = Options.Color or vector.create(1, 1, 1)
+        NewLine.Opacity = Options.Opacity or 1
+        NewLine.Visible = false
+        table.insert(PartState.Lines, NewLine)
+    end
+end
+
+-- Attempts to start tracking Part within Group (fetches its mesh from the
+-- cache). No-ops (leaves it untracked) if the mesh isn't cached yet -- the
+-- periodic Model rescan will retry it automatically since it stays absent from
+-- Group.Parts until this succeeds.
+local function MeshContentProviderTrackPart(Group, Part)
+    if Group.Parts[Part] then return end -- already tracked
+
+    local Ok, MeshId = pcall(function() return tostring(Part.MeshId) end)
+    if not Ok then return end
+
+    local MeshData = GetCachedMeshData(MeshId)
+    if not MeshData then return end
+
+    Group.Parts[Part] = {
+        MeshId = MeshId,
+        MeshData = MeshData,
+        Lines = {},
+    }
+end
+
+local function MeshContentProviderRemovePart(Group, Part)
+    local PartState = Group.Parts[Part]
+    if not PartState then return end
+    for _, DrawLine in PartState.Lines do
+        pcall(function() DrawLine:Remove() end)
+    end
+    Group.Parts[Part] = nil
+end
+
+local function MeshContentProviderUpdateGroup(Group)
+    local Options = Group.Options
+
+    for Part, PartState in Group.Parts do
+        if Part and Part.Parent then
+            local Basis = ReadPartBasis(Part)
+            local ToWorld = BuildMeshTransform(Basis, PartState.MeshData)
+            local MeshData = PartState.MeshData
+            local WorldVertices = {}
+
+            local function WorldVertex(Index)
+                local Cached = WorldVertices[Index]
+                if Cached then return Cached end
+                local World = ToWorld(MeshData.Vertices[Index])
+                WorldVertices[Index] = World
+                return World
+            end
+
+            local Topology = GetMeshTopology(PartState.MeshId, MeshData)
+            local VisibleCount = 0
+
+            for _, Edge in Topology do
+                local WorldA, WorldB = WorldVertex(Edge.A), WorldVertex(Edge.B)
+                local ScreenA, OnScreenA = Camera:WorldToScreenPoint(WorldA)
+                local ScreenB, OnScreenB = Camera:WorldToScreenPoint(WorldB)
+
+                if OnScreenA and OnScreenB then
+                    VisibleCount += 1
+                    MeshContentProviderEnsureLines(PartState, VisibleCount, Options)
+                    local DrawLine = PartState.Lines[VisibleCount]
+                    DrawLine.From = vector.create(ScreenA.X, ScreenA.Y)
+                    DrawLine.To = vector.create(ScreenB.X, ScreenB.Y)
+                    DrawLine.Visible = true
+                end
+            end
+
+            for Index = VisibleCount + 1, #PartState.Lines do
+                PartState.Lines[Index].Visible = false
+            end
+        else
+            MeshContentProviderRemovePart(Group, Part)
+        end
+    end
+end
+
+local MeshContentProvider = {}
+
+-- Resolves what Render(Instance, ...) should track: Instance itself if it's a
+-- MeshPart, or every direct-child MeshPart if it's a Model (GetChildren, not
+-- GetDescendants -- cheaper, and matches this project's existing preference,
+-- see GetBoundingBox). A MeshPart nested under a sub-folder/sub-model won't be
+-- found; call Render on that sub-instance directly if that's ever needed.
+local function MeshContentProviderResolveParts(Instance)
+    if typeof(Instance) ~= "Instance" then return nil end
+
+    if Instance:IsA("MeshPart") then
+        return { Instance }
+    end
+
+    if Instance:IsA("Model") then
+        local Parts = {}
+        for _, Child in Instance:GetChildren() do
+            if Child:IsA("MeshPart") then
+                table.insert(Parts, Child)
+            end
+        end
+        return Parts
+    end
+
+    return nil
+end
+
+-- MeshContentProvider.Render(Instance, Options?) -- starts (or replaces) a live
+-- wireframe render. Instance is a MeshPart or a Model. Options:
+-- { Color = vector, Thickness = number, Opacity = number }.
+function MeshContentProvider.Render(Instance, Options)
+    Options = Options or {}
+
+    local Parts = MeshContentProviderResolveParts(Instance)
+    if not Parts then
+        warn("MeshContentProvider.Render: Instance must be a MeshPart or a Model")
+        return
+    end
+
+    MeshContentProvider.Stop(Instance) -- replace any existing render on this Instance cleanly
+
+    local Group = {
+        IsModel = Instance:IsA("Model"),
+        Options = Options,
+        Parts = {},
+        LastScan = os.clock(),
+    }
+
+    for _, Part in Parts do
+        MeshContentProviderTrackPart(Group, Part)
+    end
+
+    RenderGroups[Instance] = Group
+end
+
+-- MeshContentProvider.Stop(Instance) -- stops and removes a render started with
+-- Render(Instance, ...).
+function MeshContentProvider.Stop(Instance)
+    local Group = RenderGroups[Instance]
+    if not Group then return end
+    for Part in Group.Parts do
+        MeshContentProviderRemovePart(Group, Part)
+    end
+    RenderGroups[Instance] = nil
+end
+
+task.spawn(function()
+    while true do
+        local ToRemove -- collected during the loop, applied after -- never
+                        -- mutate RenderGroups while iterating it
+
+        for Instance, Group in RenderGroups do
+            if Instance and Instance.Parent then
+                if Group.IsModel and os.clock() - Group.LastScan >= 1.8 then
+                    Group.LastScan = os.clock()
+                    for _, Child in Instance:GetChildren() do
+                        if Child:IsA("MeshPart") then
+                            MeshContentProviderTrackPart(Group, Child)
+                        end
+                    end
+                end
+
+                local Ok, Err = pcall(MeshContentProviderUpdateGroup, Group)
+                if not Ok and not Group.ErrorPrinted then
+                    Group.ErrorPrinted = true
+                    warn("MeshContentProvider.Render: error updating -- " .. tostring(Err))
+                end
+            else
+                ToRemove = ToRemove or {}
+                table.insert(ToRemove, Instance)
+            end
+        end
+
+        if ToRemove then
+            for _, Instance in ToRemove do
+                MeshContentProvider.Stop(Instance)
+            end
+        end
+
+        task.wait()
+    end
+end)
+
+_G.MeshContentProvider = MeshContentProvider
 
 -- // Animator:GetPlayingAnimationTracks() -> { AnimationTrack } \\ --
 -- Walks the Animator's intrusive active-animation list; each node holds a track
@@ -1771,7 +3147,7 @@ function Global.Tween:Create(Object, Info, Goals)
     -- position> }. X may be a CFrame (use its .Position) or a plain Vector3.
     if Goals.CFrame ~= nil then
         local Value = Goals.CFrame
-        local Position = typeof(Value) == "CFrame" and Value.Position or Value
+        local Position = Global.Function:IsCFrame(Value) and Value.Position or Value
         local Rewritten = {}
         for Key, Goal in Goals do
             if Key ~= "CFrame" then
@@ -1951,21 +3327,19 @@ _G.TweenService = {
 
 -- // Notifications \\ --
 
-Global.Notification = {}
-
 local Notify = {
-    Width = 136 * 1.5,
+    Width = 196,
     BodyHeight = 60,
     Margin = 8,
     AnchorFraction = 0.90, 
     SwingInTime = 0.38,
     SwingOutTime = 0.30, 
-    TitleSize = 18, -- title text size
-    BodySize = 16, -- body text size
+    TitleSize = 18,
+    BodySize = 16,
     LineGap = 3, -- vertical gap between title and body
-    StackGap = 8 * 1.5,
-    BackgroundColor = Color3.fromRGB(36, 36, 36),
-    BackgroundOpacity = 0.65, 
+    StackGap = 12,
+    BackgroundColor = Color3.fromRGB(30, 30, 30),
+    BackgroundOpacity = 0.75, 
     IconBuffer = 12 * 1.5, -- left gap before icon
     IconSize = 44 * 1.5, 
     IconGap = 8 * 1.5, -- gap between icon and text
@@ -1974,10 +3348,12 @@ local Notify = {
     ButtonHeight = 30,
     ButtonTopGap = 2, -- gap between body bottom and button row
     ButtonSpacing = 2, -- gap between two buttons
-    ButtonColor = Color3.fromRGB(36, 36, 36),
-    ButtonOpacity = 0.65,
+    ButtonColor = Color3.fromRGB(30, 30, 30),
+    ButtonOpacity = 0.75,
     ButtonTextColor = vector.create(1, 1, 1),
 }
+
+Global.Notification = {}
 
 local ActiveNotifications = {}
 local OffscreenOffset = Notify.Width + Notify.Margin + 24
