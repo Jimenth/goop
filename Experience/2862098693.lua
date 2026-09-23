@@ -1397,14 +1397,6 @@ local Restored = false
 
 RunService.Render:Connect(function()
     Module.Function:Render()
-
-    if Module.Stored.Zoom then
-        Restored = false
-        Camera.FieldOfView = Library.Flags["Zoom Amount"].Value
-    elseif not Restored then
-        Camera.FieldOfView = Module.Stored.Original.FieldOfView
-        Restored = true
-    end
     
     local Entity = Module.Function:GetClosestEntity()
     if not Entity then return end
@@ -1426,4 +1418,14 @@ RunService.Render:Connect(function()
     
     local WindowPosition = Vector2.new((Camera.ViewportSize.X / 2) - (Interface.Dimensions.Width / 2), Camera.ViewportSize.Y - Interface.Dimensions.Height - 100)
     Module.Function:DrawIndicator(WindowPosition, Target, 1)
+end)
+
+RunService.PostLocal:Connect(function()
+    if Module.Stored.Zoom then
+        Restored = false
+        Camera.FieldOfView = Library.Flags["Zoom Amount"].Value
+    elseif not Restored then
+        Camera.FieldOfView = Module.Stored.Original.FieldOfView
+        Restored = true
+    end
 end)
