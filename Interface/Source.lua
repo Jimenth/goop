@@ -153,19 +153,42 @@ local Library do
 
     local function LoadFonts()
         for _, FontData in pairs(Library.Fonts.Stored) do
-            local Name, Url = FontData[1]:match("([^%.]+)"), FontData[3]
+            local Name = FontData[1]:match("([^%.]+)")
+            local Url = FontData[3]
             local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
 
+            print("Loading font:", Name)
+
             if not fs.file(TTFPath) then
+                print("Downloading:", Url)
+
                 local Body = http.get({ url = Url })
+
+                if not Body then
+                    warn("Failed to download:", Name)
+                    continue
+                end
+
                 fs.write(TTFPath, Body)
             end
 
+            print("Reading:", TTFPath)
+
             local Data = fs.read(TTFPath)
+
+            if not Data then
+                warn("Failed to read:", TTFPath)
+                continue
+            end
+
+            print("Registering:", Name)
+
             Drawing.RegisterFont(Name, 13, Data)
 
             Library.Fonts.Data.Fonts[Name] = true
             table.insert(Library.Fonts.Data.List, Name)
+
+            print("Loaded:", Name)
         end
     end
 
