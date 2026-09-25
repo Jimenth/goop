@@ -153,43 +153,19 @@ local Library do
 
     local function LoadFonts()
         for _, FontData in pairs(Library.Fonts.Stored) do
-            local Name = FontData[1]:match("([^%.]+)")
-            local Url = FontData[3]
+            local Name, Url = FontData[1]:match("([^%.]+)"), FontData[3]
             local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
-
-            if Name == "SmallestPixel" then
-                warn("Skipping problematic font:", Name)
-                continue
-            end
-
-            print("Loading font:", Name)
 
             if not fs.file(TTFPath) then
                 local Body = http.get({ url = Url })
-
-                if not Body then
-                    warn("Failed to download:", Name)
-                    continue
-                end
-
                 fs.write(TTFPath, Body)
             end
 
             local Data = fs.read(TTFPath)
-
-            if not Data then
-                warn("Failed to read:", TTFPath)
-                continue
-            end
-
-            print("Registering:", Name)
-
             Drawing.RegisterFont(Name, 13, Data)
 
             Library.Fonts.Data.Fonts[Name] = true
             table.insert(Library.Fonts.Data.List, Name)
-
-            print("Loaded:", Name)
         end
     end
 
@@ -335,6 +311,28 @@ local Library do
             Font = Library.Font,
         })
         return MeasureText.TextBounds
+    end
+
+    local function DrawImage(X, Y, W, H, Data, Color, Opacity, ForcedZ)
+        Pool.Order = Pool.Order + 1
+        local Index = Pool.ImageCount + 1
+        Pool.ImageCount = Index
+
+        local Object = Pool.Images[Index]
+        if not Object then
+            Object = NewDrawing("Image", { })
+            Pool.Images[Index] = Object
+        end
+
+        UpdateDrawing(Object, {
+            Visible = true,
+            Position = Vector2New(X, Y),
+            Size = Vector2New(W, H),
+            Data = Data,
+            Color = Color or Theme["White"],
+            Opacity = Opacity or 1,
+            ZIndex = ForcedZ or Pool.Order,
+        })
     end
 
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
@@ -1575,6 +1573,11 @@ local Library do
         end
     end
 
+    -- PowerPoint-style soft snapping. Given the raw dragged position, nudge each of
+    -- the window's edges/centre onto a nearby edge/centre of another visible window
+    -- or the screen (within SnapDist), and record 1px guide rects for the render loop
+    -- to draw. Movement stays free: outside the threshold nothing is altered, and
+    -- holding Alt (or clearing Library.WindowSnapping) disables it entirely.
     local function ComputeWindowSnap(Window, ProposedX, ProposedY)
         Library.SnapGuides = nil
 
@@ -2983,10 +2986,7 @@ local Library do
 
         for _, Window in Library.Windows do
             if Window.Visible then
-                block_roblox_window(true)
                 Window:Render()
-            else
-                block_roblox_window(false)
             end
         end
 
