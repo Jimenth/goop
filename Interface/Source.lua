@@ -157,11 +157,14 @@ local Library do
             local Url = FontData[3]
             local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
 
+            if Name == "SmallestPixel" then
+                warn("Skipping problematic font:", Name)
+                continue
+            end
+
             print("Loading font:", Name)
 
             if not fs.file(TTFPath) then
-                print("Downloading:", Url)
-
                 local Body = http.get({ url = Url })
 
                 if not Body then
@@ -171,8 +174,6 @@ local Library do
 
                 fs.write(TTFPath, Body)
             end
-
-            print("Reading:", TTFPath)
 
             local Data = fs.read(TTFPath)
 
