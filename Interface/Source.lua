@@ -313,28 +313,6 @@ local Library do
         return MeasureText.TextBounds
     end
 
-    local function DrawImage(X, Y, W, H, Data, Color, Opacity, ForcedZ)
-        Pool.Order = Pool.Order + 1
-        local Index = Pool.ImageCount + 1
-        Pool.ImageCount = Index
-
-        local Object = Pool.Images[Index]
-        if not Object then
-            Object = NewDrawing("Image", { })
-            Pool.Images[Index] = Object
-        end
-
-        UpdateDrawing(Object, {
-            Visible = true,
-            Position = Vector2New(X, Y),
-            Size = Vector2New(W, H),
-            Data = Data,
-            Color = Color or Theme["White"],
-            Opacity = Opacity or 1,
-            ZIndex = ForcedZ or Pool.Order,
-        })
-    end
-
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
         DrawRect(X, Y, W, H, Outer)
         DrawRect(X + 1, Y + 1, W - 2, H - 2, Border)
@@ -1573,11 +1551,6 @@ local Library do
         end
     end
 
-    -- PowerPoint-style soft snapping. Given the raw dragged position, nudge each of
-    -- the window's edges/centre onto a nearby edge/centre of another visible window
-    -- or the screen (within SnapDist), and record 1px guide rects for the render loop
-    -- to draw. Movement stays free: outside the threshold nothing is altered, and
-    -- holding Alt (or clearing Library.WindowSnapping) disables it entirely.
     local function ComputeWindowSnap(Window, ProposedX, ProposedY)
         Library.SnapGuides = nil
 
@@ -2986,7 +2959,10 @@ local Library do
 
         for _, Window in Library.Windows do
             if Window.Visible then
+                block_roblox_window(true)
                 Window:Render()
+            else
+                block_roblox_window(false)
             end
         end
 
