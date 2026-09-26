@@ -2953,6 +2953,8 @@ local Library do
 
     Library.DrawingLoopRunning = true
 
+    local IconVariantKeys = { "White", "Accent", "Dim" }
+
     -- Creates at most `Budget` drawings per call, so growth is spread over
     -- several ticks instead of one large burst. Returns true when done.
     Library.Allocating = false
@@ -2976,31 +2978,36 @@ local Library do
 
         local NB = Library.NavigationBarData
         if NB and NB.Buttons then
-            -- Changing Color on an existing Image makes it vanish, so an icon is
-            -- rebuilt here (never in Render) whenever its wanted colour changes.
+            -- Each icon gets one pre-built Image per colour state (White/Accent/Dim).
+            -- Render only toggles which variant is visible, so clicking or hovering
+            -- never creates, removes or recolours an image. A variant is rebuilt
+            -- only if its theme colour changed, only while hidden, and at most
+            -- twice a second.
             for _, Btn in NB.Buttons do
-                local Wanted = Btn._WantedColor or Theme["Dim"]
-                if not Btn._Drawing or Btn._IconColor ~= Wanted then
-                    local Old = Btn._Drawing
-                    Btn._Drawing = NewDrawing("Image", {
-                        Visible = false,
-                        Data = Btn.Icon,
-                        Color = Wanted,
-                        Opacity = 1,
-                        ZIndex = 10000,
-                    })
-                    Btn._IconColor = Wanted
-                    if Old then
-                        -- Carry over placement so the swap doesn't flicker.
-                        local OldCache = PropCache[Old]
-                        if OldCache and OldCache.Position then
-                            UpdateDrawing(Btn._Drawing, {
-                                Position = OldCache.Position,
-                                Size = OldCache.Size,
-                                Visible = OldCache.Visible,
-                            })
-                        end
-                        Old:Remove()
+                local Variants = Btn._Variants
+                if not Variants then
+                    Variants = { }
+                    Btn._Variants = Variants
+                end
+                for _, Key in IconVariantKeys do
+                    local Variant = Variants[Key]
+                    local Color = Theme[Key]
+                    local Stale = Variant and Variant.Color ~= Color
+                        and not PropCache[Variant.Drawing].Visible
+                        and tick() - Variant.Built >= 0.5
+                    if not Variant or Stale then
+                        if Variant then Variant.Drawing:Remove() end
+                        Variants[Key] = {
+                            Drawing = NewDrawing("Image", {
+                                Visible = false,
+                                Data = Btn.Icon,
+                                Color = Color,
+                                Opacity = 1,
+                                ZIndex = 10000,
+                            }),
+                            Color = Color,
+                            Built = tick(),
+                        }
                     end
                 end
             end
@@ -3026,7 +3033,7 @@ local Library do
     end)
 
     local RenderConnection = RunService.Render:Connect(function()
-        if Library.Allocating then return end
+        if Library.Unloaded or Library.Allocating then return end
         Library:UpdateInput()
         Library.Input.Consumed = false
         Library.DropdownOverlay = nil
@@ -3105,28 +3112,37 @@ local Library do
                 local IW = BtnSize - IconPad * 2
                 local IH = IW
 
-                local IconColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
+                local IconKey = Active and "White" or (Hovered and "Accent" or "Dim")
 
-                -- Colour changes are applied by the Drawing loop (it rebuilds the
-                -- icon); Render only positions and shows the current one.
-                Btn._WantedColor = IconColor
-                if Btn._Drawing then
-                    UpdateDrawing(Btn._Drawing, {
-                        Visible = true,
-                        Position = Vector2New(BX + IconPad, BY + IconPad),
-                        Size = Vector2New(IW, IH),
-                    })
+                if Btn._Variants then
+                    local IconPos = Vector2New(BX + IconPad, BY + IconPad)
+                    local IconSize = Vector2New(IW, IH)
+                    for Key, Variant in Btn._Variants do
+                        UpdateDrawing(Variant.Drawing, {
+                            Visible = Key == IconKey,
+                            Position = IconPos,
+                            Size = IconSize,
+                        })
+                    end
                 end
 
                 if Library.Input.MouseClicked and Hovered and Btn.Window then
                     Library.Input.Consumed = true
-                    Btn.Window.Visible = not Btn.Window.Visible
+                    -- Cooldown so spam-clicking can't toggle a whole window's worth
+                    -- of drawings on and off every frame.
+                    local Now = tick()
+                    if Now - (Btn._LastToggle or 0) >= 0.25 then
+                        Btn._LastToggle = Now
+                        Btn.Window.Visible = not Btn.Window.Visible
+                    end
                 end
             end
         elseif Library.NavigationBarData then
             for _, Btn in Library.NavigationBarData.Buttons do
-                if Btn._Drawing then
-                    UpdateDrawing(Btn._Drawing, { Visible = false })
+                if Btn._Variants then
+                    for _, Variant in Btn._Variants do
+                        UpdateDrawing(Variant.Drawing, { Visible = false })
+                    end
                 end
             end
         end
@@ -3135,6 +3151,7 @@ local Library do
     end)
 
     function Library:Unload()
+        Library.Unloaded = true
         Library.DrawingLoopRunning = false
         if RenderConnection then
             RenderConnection:Disconnect()
@@ -3149,9 +3166,11 @@ local Library do
 
         if Library.NavigationBarData and Library.NavigationBarData.Buttons then
             for _, Btn in ipairs(Library.NavigationBarData.Buttons) do
-                if Btn._Drawing then
-                    Btn._Drawing:Remove()
-                    Btn._Drawing = nil
+                if Btn._Variants then
+                    for _, Variant in Btn._Variants do
+                        Variant.Drawing:Remove()
+                    end
+                    Btn._Variants = nil
                 end
             end
         end
