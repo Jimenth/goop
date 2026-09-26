@@ -234,6 +234,9 @@ local Library do
         Texts = { }, TextCount = 0,
         Images = { }, ImageCount = 0,
         Order = 0,
+        -- Highest counts requested by the render pass; the allocation loop
+        -- creates Drawing objects until each pool can satisfy these.
+        SquareDemand = 128, TextDemand = 64, ImageDemand = 8,
     }
 
     function Pool:Begin()
@@ -244,6 +247,10 @@ local Library do
     end
 
     function Pool:Finish()
+        if self.SquareCount > self.SquareDemand then self.SquareDemand = self.SquareCount end
+        if self.TextCount > self.TextDemand then self.TextDemand = self.TextCount end
+        if self.ImageCount > self.ImageDemand then self.ImageDemand = self.ImageCount end
+
         for Index = self.SquareCount + 1, #self.Squares do
             UpdateDrawing(self.Squares[Index], { Visible = false })
         end
@@ -263,10 +270,7 @@ local Library do
         Pool.SquareCount = Index
 
         local Square = Pool.Squares[Index]
-        if not Square then
-            Square = NewDrawing("Square", { Filled = true, Thickness = 1 })
-            Pool.Squares[Index] = Square
-        end
+        if not Square then return end -- allocated by the Drawing loop
 
         UpdateDrawing(Square, {
             Visible = true,
@@ -284,10 +288,7 @@ local Library do
         Pool.TextCount = Index
 
         local Object = Pool.Texts[Index]
-        if not Object then
-            Object = NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor })
-            Pool.Texts[Index] = Object
-        end
+        if not Object then return end -- allocated by the Drawing loop
 
         UpdateDrawing(Object, {
             Visible = true,
@@ -319,10 +320,7 @@ local Library do
         Pool.ImageCount = Index
 
         local Object = Pool.Images[Index]
-        if not Object then
-            Object = NewDrawing("Image", { })
-            Pool.Images[Index] = Object
-        end
+        if not Object then return end -- allocated by the Drawing loop
 
         UpdateDrawing(Object, {
             Visible = true,
@@ -2944,6 +2942,42 @@ local Library do
     Library.WindowSnapping = true
     Library.SnapGuides = nil
 
+    -- // Drawing Allocation Loop \\ --
+    -- All Drawing.new calls happen here, never inside the Render event.
+    -- The render pass only reuses pooled objects and reports how many it needed.
+
+    Library.DrawingLoopRunning = true
+
+    local function AllocateDrawings()
+        while #Pool.Squares < Pool.SquareDemand do
+            Pool.Squares[#Pool.Squares + 1] = NewDrawing("Square", { Filled = true, Thickness = 1, Visible = false })
+        end
+        while #Pool.Texts < Pool.TextDemand do
+            Pool.Texts[#Pool.Texts + 1] = NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor, Visible = false })
+        end
+        while #Pool.Images < Pool.ImageDemand do
+            Pool.Images[#Pool.Images + 1] = NewDrawing("Image", { Visible = false })
+        end
+
+        local NB = Library.NavigationBarData
+        if NB and NB.Buttons then
+            for _, Btn in NB.Buttons do
+                if not Btn._Drawing then
+                    Btn._Drawing = NewDrawing("Image", { Visible = false, Data = Btn.Icon, ZIndex = 10000 })
+                end
+            end
+        end
+    end
+
+    AllocateDrawings()
+
+    task.spawn(function()
+        while Library.DrawingLoopRunning do
+            AllocateDrawings()
+            task.wait()
+        end
+    end)
+
     local RenderConnection = RunService.Render:Connect(function()
         Library:UpdateInput()
         Library.Input.Consumed = false
@@ -3025,9 +3059,8 @@ local Library do
 
                 local IconColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
 
-                if not Btn._Drawing or Btn._IconColor ~= IconColor then
-                    if Btn._Drawing then Btn._Drawing:Remove() end
-                    Btn._Drawing = NewDrawing("Image", {
+                if Btn._Drawing then -- allocated by the Drawing loop
+                    UpdateDrawing(Btn._Drawing, {
                         Visible = true,
                         Position = Vector2New(BX + IconPad, BY + IconPad),
                         Size = Vector2New(IW, IH),
@@ -3047,9 +3080,7 @@ local Library do
         elseif Library.NavigationBarData then
             for _, Btn in Library.NavigationBarData.Buttons do
                 if Btn._Drawing then
-                    Btn._Drawing:Remove()
-                    Btn._Drawing = nil
-                    Btn._IconColor = nil
+                    UpdateDrawing(Btn._Drawing, { Visible = false })
                 end
             end
         end
@@ -3058,6 +3089,7 @@ local Library do
     end)
 
     function Library:Unload()
+        Library.DrawingLoopRunning = false
         if RenderConnection then
             RenderConnection:Disconnect()
             RenderConnection = nil
