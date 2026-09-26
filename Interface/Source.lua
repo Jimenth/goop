@@ -69,21 +69,15 @@ local Library do
         Folders = {
             Directory = "Goop",
             Files = "Goop/Files",
-            Fonts = "Goop/Files/Fonts",
             Images = "Goop/Files/Images",
             Configs = "Goop/" .. tostring(game.GameId) .. "/Configs",
         },
 
+        -- Built-in Drawing fonts (referenced by name). Custom font loading was removed.
         Fonts = {
-            Data = {List = {}, Fonts = {}},
-            Stored = {
-                {"ProggyClean.ttf",       "ProggyClean.json",       "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/ProggyClean.ttf"},
-                {"Minecraftia.ttf",       "Minecraftia.json",       "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Minecraftia.ttf"},
-                {"Verdana.ttf",           "Verdana.json",           "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Verdana.ttf"},
-                {"Visitor.ttf",           "Visitor.json",           "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Visitor.ttf"},
-                {"SmallestPixel.ttf",     "SmallestPixel.json",     "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/SmallestPixel.ttf"},
-                {"Windows-XP-Tahoma.ttf", "Windows-XP-Tahoma.json", "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Windows-XP-Tahoma.ttf"},
-                {"Monaco.ttf",            "Monaco.json",            "https://raw.githubusercontent.com/Jimenth/Misanthropy/refs/heads/main/Fonts/Monaco.ttf"},
+            Data = {
+                List = { "LilitaOne" },
+                Fonts = { ["LilitaOne"] = true },
             },
         }
     }
@@ -151,31 +145,8 @@ local Library do
         end
     end
 
-    local function LoadFonts()
-        for _, FontData in pairs(Library.Fonts.Stored) do
-            local Name, Url = FontData[1]:match("([^%.]+)"), FontData[3]
-            local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
-
-            if not fs.file(TTFPath) then
-                local Body = http.get(Url)
-                fs.write(TTFPath, Body)
-            end
-
-            local Data = fs.read(TTFPath)
-            Drawing.RegisterFont(Name, 13, Data)
-
-            Library.Fonts.Data.Fonts[Name] = true
-            table.insert(Library.Fonts.Data.List, Name)
-
-            -- Yield between fonts so the scheduler's no-yield timeout never trips.
-            task.wait(0)
-        end
-    end
-
-    LoadFonts()
-
     Library.FontSize = 13
-    Library.Font = 1 -- Default to the first font
+    Library.Font = "LilitaOne"
 
     -- // Icons \\ --
 
@@ -203,7 +174,7 @@ local Library do
     LoadIcons()
 
     -- // Core \\ --
-    local OutlineColor = Vector3.new(0, 0, 0)
+    local OutlineColor = vector.create(0, 0, 0)
     local PropCache = setmetatable({ }, { __mode = "k" })
 
     -- Drawing.new is deprecated (see spec.d.luau); use the type constructors.
@@ -248,7 +219,7 @@ local Library do
         Order = 0,
         -- Highest counts requested by the render pass; the allocation loop
         -- creates Drawing objects until each pool can satisfy these.
-        SquareDemand = 128, TextDemand = 64, ImageDemand = 8,
+        SquareDemand = 128, TextDemand = 64, ImageDemand = 0,
     }
 
     function Pool:Begin()
