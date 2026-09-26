@@ -174,11 +174,10 @@ local Library do
     LoadIcons()
 
     -- // Core \\ --
-    -- // Retained Drawings \\ --
-    -- Only the navigation bar icons use retained drawings (DrawingImmediate has no
-    -- image primitive). They're created in the Drawing loop, never in Render.
+    local OutlineColor = vector.create(0, 0, 0)
     local PropCache = setmetatable({ }, { __mode = "k" })
 
+    -- Drawing.new is deprecated (see spec.d.luau); use the type constructors.
     local Constructors = {
         Square = Square,
         Text = Text,
@@ -213,74 +212,257 @@ local Library do
         end
     end
 
-    -- // Immediate Rendering \\ --
-    -- Boxes and text are drawn with DrawingImmediate every frame. Every
-    -- DrawingImmediate call must happen inside RunService.Render: InRender is
-    -- only true while the Render handler runs, and the helpers do nothing otherwise.
+    -- // Drawing Scopes \\ --
+    -- Every window, section, element and overlay owns its own set of drawings
+    -- (a "scope"). A drawing stays bound to the same thing on screen, so each
+    -- frame only the properties that actually changed get written; opening,
+    -- closing or changing one window never reshuffles another window's drawings.
+    --
+    -- Drawings are never created while rendering: scopes take pre-made, hidden
+    -- drawings from a shared reserve, which the Drawing loop keeps topped up.
 
-    local Immediate = DrawingImmediate
-    local VectorCreate = vector.create
-    local InRender = false
+    local Reserve = { Square = { }, Text = { } }
+    local ReserveTarget = { Square = 256, Text = 96 } -- spare drawings kept ready
+    local InitialReserve = { Square = 1536, Text = 384 } -- created once at load
 
-    -- DrawingImmediate takes `vector | { r, g, b }` colours; Color3s are
-    -- converted to 0-1 vectors (same convention as Extra.lua) and cached.
-    local ColorCache = setmetatable({ }, { __mode = "k" })
-
-    local function ToColor(Color)
-        local Kind = type(Color)
-        if Kind ~= "userdata" and Kind ~= "table" then
-            return Color
+    local function MakeReserveDrawing(Kind)
+        if Kind == "Square" then
+            return NewDrawing("Square", { Filled = true, Thickness = 1, Visible = false })
         end
-        local Cached = ColorCache[Color]
-        if Cached then return Cached end
-        local Converted = Color
-        local Ok, R = pcall(function() return Color.R end)
-        if Ok and type(R) == "number" then
-            Converted = VectorCreate(Color.R, Color.G, Color.B)
+        return NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor, Visible = false })
+    end
+
+    local function TakeDrawing(Kind)
+        local List = Reserve[Kind]
+        local Count = #List
+        if Count == 0 then return nil end
+        local Object = List[Count]
+        List[Count] = nil
+        return Object
+    end
+
+    local Scopes = { }       -- Owner -> Scope
+    local ScopeList = { }    -- every live Scope
+    local ScopeStack = { }
+    local ScopeDepth = 0
+    local CurrentScope = nil
+
+    Library.FrameId = 0
+    Library.FrameTime = 0
+
+    local function GetScope(Owner)
+        local Scope = Scopes[Owner]
+        if not Scope then
+            Scope = {
+                Owner = Owner,
+                Squares = { }, SquareCount = 0,
+                Texts = { }, TextCount = 0,
+                Order = 0, Base = 0,
+                Frame = -1, LastUsed = 0,
+                Hidden = true,
+            }
+            Scopes[Owner] = Scope
+            ScopeList[#ScopeList + 1] = Scope
         end
-        ColorCache[Color] = Converted
-        return Converted
+        return Scope
+    end
+
+    -- Begins drawing into Owner's scope. ZBase keeps layering stable: things that
+    -- never overlap (e.g. the elements of one window) share a band, so their
+    -- ZIndex values don't shift when something else appears or disappears.
+    local function PushScope(Owner, ZBase)
+        local Scope = GetScope(Owner)
+        Scope.SquareCount, Scope.TextCount, Scope.Order = 0, 0, 0
+        Scope.Base = ZBase or 0
+        Scope.Frame = Library.FrameId
+        Scope.LastUsed = Library.FrameTime
+        Scope.Hidden = false
+
+        ScopeDepth = ScopeDepth + 1
+        ScopeStack[ScopeDepth] = CurrentScope or false
+        CurrentScope = Scope
+    end
+
+    -- Ends the current scope: anything it drew last frame but not this frame is hidden.
+    local function PopScope()
+        local Scope = CurrentScope
+        if Scope then
+            for Index = Scope.SquareCount + 1, #Scope.Squares do
+                UpdateDrawing(Scope.Squares[Index], { Visible = false })
+            end
+            for Index = Scope.TextCount + 1, #Scope.Texts do
+                UpdateDrawing(Scope.Texts[Index], { Visible = false })
+            end
+        end
+        local Previous = ScopeStack[ScopeDepth]
+        ScopeStack[ScopeDepth] = nil
+        ScopeDepth = MathMax(ScopeDepth - 1, 0)
+        CurrentScope = Previous or nil
+    end
+
+    local function ResetScopeStack()
+        table.clear(ScopeStack)
+        ScopeDepth = 0
+        CurrentScope = nil
+    end
+
+    -- Runs Callback inside Owner's scope, keeping the scope stack balanced even
+    -- if the callback returns early.
+    local function WithScope(Owner, ZBase, Callback, ...)
+        PushScope(Owner, ZBase)
+        Callback(...)
+        PopScope()
+    end
+
+    local function HideScope(Scope)
+        for _, Object in Scope.Squares do
+            UpdateDrawing(Object, { Visible = false })
+        end
+        for _, Object in Scope.Texts do
+            UpdateDrawing(Object, { Visible = false })
+        end
+        Scope.Hidden = true
+    end
+
+    -- Hides scopes nobody drew last frame (closed windows, other tabs, culled
+    -- elements), a limited number of drawings per tick so a big window closing
+    -- is spread over a few frames. Scopes unused for a while give their
+    -- drawings back to the reserve.
+    local LastRelease = 0
+
+    local function SweepScopes()
+        local Budget = 384
+        local Stale = Library.FrameId - 1
+        for _, Scope in ScopeList do
+            if not Scope.Hidden and Scope.Frame < Stale then
+                if Budget <= 0 then break end
+                Budget = Budget - (#Scope.Squares + #Scope.Texts)
+                HideScope(Scope)
+            end
+        end
+
+        local Now = Library.FrameTime
+        if Now - LastRelease < 2 then return end
+        LastRelease = Now
+
+        local Kept = { }
+        for _, Scope in ScopeList do
+            if Scope.Hidden and Now - Scope.LastUsed > 10 then
+                for _, Object in Scope.Squares do
+                    Reserve.Square[#Reserve.Square + 1] = Object
+                end
+                for _, Object in Scope.Texts do
+                    Reserve.Text[#Reserve.Text + 1] = Object
+                end
+                Scopes[Scope.Owner] = nil
+            else
+                Kept[#Kept + 1] = Scope
+            end
+        end
+        ScopeList = Kept
     end
 
     -- // Draw Helpers \\ --
 
     local function DrawRect(X, Y, W, H, Color, Opacity)
-        if not InRender then return end
+        local Scope = CurrentScope
+        if not Scope then return end
+        -- Skip degenerate rects (NaN or non-positive size).
         if X ~= X or Y ~= Y or W ~= W or H ~= H or W <= 0 or H <= 0 then return end
-        Immediate.FilledRectangle(VectorCreate(X, Y, 0), VectorCreate(W, H, 0), ToColor(Color), Opacity or 1, 0)
+
+        Scope.Order = Scope.Order + 1
+        local Index = Scope.SquareCount + 1
+        Scope.SquareCount = Index
+
+        local Square = Scope.Squares[Index]
+        if not Square then
+            Square = TakeDrawing("Square")
+            if not Square then return end -- reserve empty; the Drawing loop refills it
+            Scope.Squares[Index] = Square
+        end
+
+        -- Compare raw numbers so Position/Size are only written when they change.
+        local Cache = PropCache[Square]
+        if Cache.X ~= X or Cache.Y ~= Y then
+            Square.Position = Vector2New(X, Y)
+            Cache.X, Cache.Y = X, Y
+        end
+        if Cache.W ~= W or Cache.H ~= H then
+            Square.Size = Vector2New(W, H)
+            Cache.W, Cache.H = W, H
+        end
+
+        UpdateDrawing(Square, {
+            Visible = true,
+            Color = Color,
+            Opacity = Opacity or 1,
+            ZIndex = Scope.Base + Scope.Order,
+        })
     end
 
     local function DrawText(X, Y, Size, Color, Text, Opacity, Center)
-        if not InRender then return end
+        local Scope = CurrentScope
+        if not Scope then return end
         if X ~= X or Y ~= Y then return end
-        Immediate.OutlinedText(VectorCreate(X, Y, 0), Size, ToColor(Color), Opacity or 1, tostring(Text or ""), Center or false, Library.Font)
+
+        Scope.Order = Scope.Order + 1
+        local Index = Scope.TextCount + 1
+        Scope.TextCount = Index
+
+        local Object = Scope.Texts[Index]
+        if not Object then
+            Object = TakeDrawing("Text")
+            if not Object then return end
+            Scope.Texts[Index] = Object
+        end
+
+        local Cache = PropCache[Object]
+        if Cache.X ~= X or Cache.Y ~= Y then
+            Object.Position = Vector2New(X, Y)
+            Cache.X, Cache.Y = X, Y
+        end
+
+        UpdateDrawing(Object, {
+            Visible = true,
+            Size = Size,
+            Color = Color,
+            Text = tostring(Text or ""),
+            Center = Center or false,
+            Opacity = Opacity or 1,
+            Font = Library.Font,
+            ZIndex = Scope.Base + Scope.Order,
+        })
     end
 
-    -- Text bounds are cached per font/size/text. Outside Render only cached
-    -- values (or a rough estimate) are returned, so DrawingImmediate is never
-    -- called outside the Render event.
-    local BoundsCache = { }
-    local BoundsCacheSize = 0
+    local MeasureText = NewDrawing("Text", { Visible = false })
 
     local function GetTextBounds(Text, Size)
-        Text = tostring(Text)
-        Size = Size or Library.FontSize
-        local Key = tostring(Library.Font) .. "\0" .. Size .. "\0" .. Text
-        local Cached = BoundsCache[Key]
-        if Cached then return Cached end
-
-        if not InRender then
-            return VectorCreate(#Text * Size * 0.5, Size, 0)
-        end
-
-        local Bounds = Immediate.GetTextBounds(Library.Font, Size, Text)
-        if BoundsCacheSize > 4096 then
-            BoundsCache, BoundsCacheSize = { }, 0
-        end
-        BoundsCache[Key] = Bounds
-        BoundsCacheSize = BoundsCacheSize + 1
-        return Bounds
+        UpdateDrawing(MeasureText, {
+            Text = tostring(Text),
+            Size = Size or Library.FontSize,
+            Font = Library.Font,
+        })
+        return MeasureText.TextBounds
     end
+
+    -- ZIndex bands. Within a window: chrome < sections < elements < popups.
+    local Z = {
+        Watermark = 10000,
+        GroupRanked = 20000,
+        KeybindList = 30000,
+        WindowStart = 100000, WindowStep = 20000,
+        Section = 2000,
+        Element = 4000,
+        Dropdown = 15000,
+        Snap = 900000,
+        Notifications = 910000,
+        ContextMenu = 930000,
+        ColorPicker = 940000,
+        NavBar = 950000,
+        NavIcon = 960000,
+    }
+    Library.ZBands = Z
+    Library.CurrentWindowZ = 0
 
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
         DrawRect(X, Y, W, H, Outer)
@@ -1087,7 +1269,7 @@ local Library do
             if not Element.Hidden then
                 Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
                 Element.SectionRightEdge = SectionRightEdge
-                Element:Render()
+                WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
                 CursorY = CursorY + Element.Height
             end
         end
@@ -1192,7 +1374,7 @@ local Library do
                     if CursorY >= ContentTop and CursorY + Element.Height <= ContentBottom then
                         Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
                         Element.SectionRightEdge = SectionRightEdge
-                        Element:Render()
+                        WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
                     end
                     CursorY = CursorY + Element.Height
                 end
@@ -1334,7 +1516,7 @@ local Library do
                 if not Element.Hidden then
                     Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
                     Element.SectionRightEdge = SectionRightEdge
-                    Element:Render()
+                    WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
                     CursorY = CursorY + Element.Height
                 end
             end
@@ -1362,7 +1544,7 @@ local Library do
                 local ColX = X + Pad + (Col - 1) * (ColumnWidth + MiddleGap)
                 local SecY = ColumnCursorY[Col]
 
-                Section:Render(ColX, SecY, ColumnWidth)
+                WithScope(Section, Library.CurrentWindowZ + Z.Section, Section.Render, Section, ColX, SecY, ColumnWidth)
                 ColumnCursorY[Col] = SecY + Section.Height + Library.Layout.SectionGap
             end
         end
@@ -1607,6 +1789,9 @@ local Library do
     end
 
     function WindowClass:Render()
+        -- Each window runs in its own task, so the dropdown overlay is per window.
+        Library.DropdownOverlay = nil
+
         -- Consume clicks that land inside an open colorpicker window.
         if Library.ActiveColorPicker and Library.ActiveColorPicker.LastRect and Library.Input.MouseClicked then
             local Rect = Library.ActiveColorPicker.LastRect
@@ -1723,6 +1908,7 @@ local Library do
 
         -- Dropdown overlay (drawn above everything else on this window).
         if Library.DropdownOverlay then
+            PushScope(self.OverlayKey, Library.CurrentWindowZ + Z.Dropdown)
             local Overlay = Library.DropdownOverlay
             local Element = Overlay.Element
             local OX, OY, OW = Overlay.X, Overlay.Y, Overlay.Width
@@ -1815,9 +2001,18 @@ local Library do
                 DrawRect(TrackX, TrackY, 3, TrackH, Theme["Black"])
                 DrawRect(TrackX, ThumbY, 3, ThumbH, ThumbHovered and Theme["Accent"] or Theme["Border"])
             end
+            PopScope()
         end
 
-        -- KeyPicker right-click context menu (Toggle / Hold mode).
+        if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
+            Library.ActiveDropdown.Open = false
+            Library.ActiveDropdown = nil
+        end
+    end
+
+    -- KeyPicker right-click context menu (Toggle / Hold mode). Rendered once per
+    -- frame by the overlay task instead of by every visible window.
+    function Library:RenderKeyPickerContext()
         if Library.KeyPickerContext then
             local Keypicker = Library.KeyPickerContext.Element
             local MX = Library.KeyPickerContext.X
@@ -1859,12 +2054,6 @@ local Library do
             end
         end
 
-        Library:RenderColorPicker()
-
-        if Library.Input.MouseClicked and Library.ActiveDropdown and Library.ActiveDropdown.Open and not Library.Input.Consumed then
-            Library.ActiveDropdown.Open = false
-            Library.ActiveDropdown = nil
-        end
     end
 
     function Library:Window(Data)
@@ -1898,6 +2087,12 @@ local Library do
         end
 
         Library.Windows[#Library.Windows + 1] = Window
+        Window.ZBase = Library.ZBands.WindowStart + #Library.Windows * Library.ZBands.WindowStep
+        Window.OverlayKey = { }
+        Window.SnapKey = { }
+        if Library.StartWindowTask then
+            Library.StartWindowTask(Window)
+        end
 
         RunService.PostLocal:Connect(function()
             local PressedKeys = getpressedkeys() or { }
@@ -2891,123 +3086,194 @@ local Library do
     Library.WindowSnapping = true
     Library.SnapGuides = nil
 
-    -- // Drawing Allocation Loop \\ --
-    -- Creates the navigation bar's retained icon images. All Drawing object
-    -- creation happens here, never inside the Render event.
+    -- // Drawing Loop \\ --
+    -- All Drawing object creation happens here: it keeps the scope reserve topped
+    -- up and builds the navigation bar icons. Nothing is created while rendering.
 
     Library.DrawingLoopRunning = true
+    Library.Unloaded = false
 
     local IconVariantKeys = { "White", "Accent", "Dim" }
 
-    Library.Allocating = false
+    -- Creates at most `Budget` drawings per call. Returns true once the reserve
+    -- has reached `Target`.
+    local function FillReserve(Target, Budget)
+        for _, Kind in { "Square", "Text" } do
+            local List = Reserve[Kind]
+            while Budget > 0 and #List < Target[Kind] do
+                List[#List + 1] = MakeReserveDrawing(Kind)
+                Budget = Budget - 1
+            end
+        end
+        return #Reserve.Square >= Target.Square and #Reserve.Text >= Target.Text
+    end
 
-    local function AllocateDrawings()
-        Library.Allocating = true
-
+    local function BuildNavIcons()
         local NB = Library.NavigationBarData
-        if NB and NB.Buttons then
-            -- Each icon gets one pre-built Image per colour state (White/Accent/Dim).
-            -- Render only toggles which variant is visible, so clicking or hovering
-            -- never creates, removes or recolours an image. A variant is rebuilt
-            -- only if its theme colour changed, only while hidden, and at most
-            -- twice a second.
-            for _, Btn in NB.Buttons do
-                local Variants = Btn._Variants
-                if not Variants then
-                    Variants = { }
-                    Btn._Variants = Variants
-                end
-                for _, Key in IconVariantKeys do
-                    local Variant = Variants[Key]
-                    local Color = Theme[Key]
-                    local Stale = Variant and Variant.Color ~= Color
-                        and not PropCache[Variant.Drawing].Visible
-                        and tick() - Variant.Built >= 0.5
-                    if not Variant or Stale then
-                        if Variant then Variant.Drawing:Remove() end
-                        Variants[Key] = {
-                            Drawing = NewDrawing("Image", {
-                                Visible = false,
-                                Data = Btn.Icon,
-                                Color = Color,
-                                Opacity = 1,
-                                ZIndex = 10000,
-                            }),
+        if not (NB and NB.Buttons) then return end
+
+        -- Each icon gets one pre-built Image per colour state (White/Accent/Dim).
+        -- Rendering only toggles which variant is visible. A variant is rebuilt
+        -- only if its theme colour changed, only while hidden, at most twice a second.
+        for _, Btn in NB.Buttons do
+            local Variants = Btn._Variants
+            if not Variants then
+                Variants = { }
+                Btn._Variants = Variants
+            end
+            for _, Key in IconVariantKeys do
+                local Variant = Variants[Key]
+                local Color = Theme[Key]
+                local Stale = Variant and Variant.Color ~= Color
+                    and not PropCache[Variant.Drawing].Visible
+                    and tick() - Variant.Built >= 0.5
+                if not Variant or Stale then
+                    if Variant then Variant.Drawing:Remove() end
+                    Variants[Key] = {
+                        Drawing = NewDrawing("Image", {
+                            Visible = false,
+                            Data = Btn.Icon,
                             Color = Color,
-                            Built = tick(),
-                        }
-                    end
+                            Opacity = 1,
+                            ZIndex = Z.NavIcon,
+                        }),
+                        Color = Color,
+                        Built = tick(),
+                    }
                 end
             end
         end
-
-        Library.Allocating = false
     end
 
-    AllocateDrawings()
+    -- Initial reserve, created before any rendering starts. Yields between
+    -- batches so loading doesn't hit the scheduler timeout.
+    while not FillReserve(InitialReserve, 256) do
+        task.wait(0)
+    end
 
     task.spawn(function()
         while Library.DrawingLoopRunning do
-            AllocateDrawings()
+            FillReserve(ReserveTarget, 32)
+            BuildNavIcons()
             task.wait(0)
         end
     end)
 
-    local function RenderFrame()
-        Library:UpdateInput()
-        Library.Input.Consumed = false
-        Library.DropdownOverlay = nil
+    -- // Render Tasks \\ --
+    -- Rendering runs in separate tasks instead of one handler:
+    --   * the frame task reads input, handles the menu key and hides stale scopes;
+    --   * each window renders itself in its own task;
+    --   * the overlay task renders everything that isn't part of a window.
+    -- Every task renders at most once per frame (Library.FrameId) and never yields
+    -- mid-render, so the scope stack is never shared between tasks.
+
+    local function SafeRender(Label, Callback, ...)
+        local Ok, Err = pcall(Callback, ...)
+        if not Ok then
+            ResetScopeStack()
+            print("[Interface] " .. Label .. " render error: " .. tostring(Err))
+        end
+    end
+
+    -- Frame task
+    task.spawn(function()
+        while not Library.Unloaded do
+            Library.FrameId = Library.FrameId + 1
+            Library.FrameTime = tick()
+
+            SafeRender("Frame", function()
+                Library:UpdateInput()
+                Library.Input.Consumed = false
+
+                local MainWin = Library.Windows[1]
+                if MainWin then
+                    local MenuKey = MainWin.MenuToggleKey or "RightShift"
+                    local PressedKeys = getpressedkeys() or { }
+                    local MenuKeyDown = TableFind(PressedKeys, MenuKey) ~= nil
+
+                    if MenuKeyDown and not Library.MasterPrevState then
+                        if Library.MasterVisible then
+                            Library.MasterSavedStates = { }
+                            for _, Window in Library.Windows do
+                                Library.MasterSavedStates[Window] = Window.Visible
+                                Window.Visible = false
+                            end
+                            Library.MasterVisible = false
+                        else
+                            for _, Window in Library.Windows do
+                                Window.Visible = Library.MasterSavedStates[Window] or false
+                            end
+                            Library.MasterVisible = true
+                        end
+                        Library.MasterPrevState = true
+                        Library.Input.FocusedTextbox = nil
+                    elseif not MenuKeyDown then
+                        Library.MasterPrevState = false
+                    end
+                end
+
+                SweepScopes()
+            end)
+
+            task.wait(0)
+        end
+    end)
+
+    local function RenderWindow(Window)
+        Library.CurrentWindowZ = Window.ZBase
         Library.SnapGuides = nil
 
-        local MainWin = Library.Windows[1]
-        if not MainWin then return end
+        WithScope(Window, Window.ZBase, Window.Render, Window)
 
-        local MenuKey = MainWin.MenuToggleKey or "RightShift"
-        local PressedKeys = getpressedkeys() or { }
-        local MenuKeyDown = TableFind(PressedKeys, MenuKey) ~= nil
-
-        if MenuKeyDown and not Library.MasterPrevState then
-            if Library.MasterVisible then
-                Library.MasterSavedStates = { }
-                for _, Window in Library.Windows do
-                    Library.MasterSavedStates[Window] = Window.Visible
-                    Window.Visible = false
-                end
-                Library.MasterVisible = false
-            else
-                for _, Window in Library.Windows do
-                    Window.Visible = Library.MasterSavedStates[Window] or false
-                end
-                Library.MasterVisible = true
-            end
-            Library.MasterPrevState = true
-            Library.Input.FocusedTextbox = nil
-        elseif not MenuKeyDown then
-            Library.MasterPrevState = false
-        end
-
-        Library:RenderWatermark()
-        Library:RenderGroupRanked()
-
-        MainWin:RenderKeybindList()
-
-        for _, Window in Library.Windows do
-            if Window.Visible then
-                Window:Render()
-            end
-        end
-
+        -- Snap guides from dragging this window.
         if Library.SnapGuides then
+            PushScope(Window.SnapKey, Z.Snap)
             for _, G in Library.SnapGuides do
                 DrawRect(G[1], G[2], G[3], G[4], Theme["Accent"])
             end
+            PopScope()
+            Library.SnapGuides = nil
+        end
+    end
+
+    -- One task per window, started when the window is created.
+    function Library.StartWindowTask(Window)
+        task.spawn(function()
+            local LastFrame = -1
+            while not Library.Unloaded do
+                if Library.FrameId ~= LastFrame then
+                    LastFrame = Library.FrameId
+                    if Window.Visible then
+                        SafeRender(Window.Name, RenderWindow, Window)
+                    end
+                end
+                task.wait(0)
+            end
+        end)
+    end
+
+    for _, Window in Library.Windows do
+        Library.StartWindowTask(Window)
+    end
+
+    local function RenderOverlays()
+        local MainWin = Library.Windows[1]
+        if not MainWin then return end
+
+        WithScope("Watermark", Z.Watermark, Library.RenderWatermark, Library)
+        WithScope("GroupRanked", Z.GroupRanked, Library.RenderGroupRanked, Library)
+        WithScope("KeybindList", Z.KeybindList, MainWin.RenderKeybindList, MainWin)
+
+        for Index, Window in Library.Windows do
+            Window.NotifyKey = Window.NotifyKey or { }
+            WithScope(Window.NotifyKey, Z.Notifications + Index * 1000, Window.RenderNotifications, Window)
         end
 
-        for _, Window in Library.Windows do
-            Window:RenderNotifications()
-        end
+        WithScope("KeyPickerContext", Z.ContextMenu, Library.RenderKeyPickerContext, Library)
+        WithScope("ColorPicker", Z.ColorPicker, Library.RenderColorPicker, Library)
 
         if Library.NavigationBarData and Library.MasterVisible then
+            PushScope(Library.NavigationBarData, Z.NavBar)
             local NB = Library.NavigationBarData
             local BtnSize = 28
             local BtnGap = 3
@@ -3055,6 +3321,7 @@ local Library do
                     end
                 end
             end
+            PopScope()
         elseif Library.NavigationBarData then
             for _, Btn in Library.NavigationBarData.Buttons do
                 if Btn._Variants then
@@ -3067,25 +3334,35 @@ local Library do
 
     end
 
-    Library.Unloaded = false
-
-    local RenderConnection = RunService.Render:Connect(function()
-        if Library.Unloaded or Library.Allocating then return end
-        InRender = true
-        local Ok, Err = pcall(RenderFrame)
-        InRender = false
-        if not Ok then
-            print("[Interface] Render error: " .. tostring(Err))
+    -- Overlay task
+    task.spawn(function()
+        local LastFrame = -1
+        while not Library.Unloaded do
+            if Library.FrameId ~= LastFrame then
+                LastFrame = Library.FrameId
+                SafeRender("Overlay", RenderOverlays)
+            end
+            task.wait(0)
         end
     end)
 
     function Library:Unload()
         Library.Unloaded = true
         Library.DrawingLoopRunning = false
-        if RenderConnection then
-            RenderConnection:Disconnect()
-            RenderConnection = nil
+
+        for _, Scope in ScopeList do
+            for _, Object in Scope.Squares do Object:Remove() end
+            for _, Object in Scope.Texts do Object:Remove() end
         end
+        table.clear(Scopes)
+        ScopeList = { }
+
+        for _, Kind in { "Square", "Text" } do
+            for _, Object in Reserve[Kind] do Object:Remove() end
+            Reserve[Kind] = { }
+        end
+
+        MeasureText:Remove()
 
         if Library.NavigationBarData and Library.NavigationBarData.Buttons then
             for _, Btn in ipairs(Library.NavigationBarData.Buttons) do
