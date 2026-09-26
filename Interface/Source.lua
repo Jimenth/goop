@@ -219,7 +219,9 @@ local Library do
         Order = 0,
         -- Highest counts requested by the render pass; the allocation loop
         -- creates Drawing objects until each pool can satisfy these.
-        SquareDemand = 128, TextDemand = 64, ImageDemand = 0,
+        -- Pre-sized so opening the Style/Config windows or a colour picker
+        -- doesn't force a burst of allocations while rendering.
+        SquareDemand = 1536, TextDemand = 384, ImageDemand = 0,
     }
 
     function Pool:Begin()
@@ -248,6 +250,10 @@ local Library do
     -- // Draw Helpers \\ --
 
     local function DrawRect(X, Y, W, H, Color, Opacity)
+        -- Skip degenerate rects (NaN or non-positive size) instead of handing
+        -- them to the renderer.
+        if X ~= X or Y ~= Y or W ~= W or H ~= H or W <= 0 or H <= 0 then return end
+
         Pool.Order = Pool.Order + 1
         local Index = Pool.SquareCount + 1
         Pool.SquareCount = Index
@@ -255,10 +261,19 @@ local Library do
         local Square = Pool.Squares[Index]
         if not Square then return end -- allocated by the Drawing loop
 
+        -- Compare raw numbers so Position/Size are only written when they change.
+        local Cache = PropCache[Square]
+        if Cache.X ~= X or Cache.Y ~= Y then
+            Square.Position = Vector2New(X, Y)
+            Cache.X, Cache.Y = X, Y
+        end
+        if Cache.W ~= W or Cache.H ~= H then
+            Square.Size = Vector2New(W, H)
+            Cache.W, Cache.H = W, H
+        end
+
         UpdateDrawing(Square, {
             Visible = true,
-            Position = Vector2New(X, Y),
-            Size = Vector2New(W, H),
             Color = Color,
             Opacity = Opacity or 1,
             ZIndex = Pool.Order,
@@ -273,12 +288,19 @@ local Library do
         local Object = Pool.Texts[Index]
         if not Object then return end -- allocated by the Drawing loop
 
+        if X ~= X or Y ~= Y then return end
+
+        local Cache = PropCache[Object]
+        if Cache.X ~= X or Cache.Y ~= Y then
+            Object.Position = Vector2New(X, Y)
+            Cache.X, Cache.Y = X, Y
+        end
+
         UpdateDrawing(Object, {
             Visible = true,
-            Position = Vector2New(X, Y),
             Size = Size,
             Color = Color,
-            Text = Text,
+            Text = tostring(Text or ""),
             Center = Center or false,
             Opacity = Opacity or 1,
             Font = Library.Font,
@@ -2733,8 +2755,8 @@ local Library do
             },
         }
 
-        -- The icon Image objects are created lazily (and rebuilt on colour change)
-        -- by the render loop; see the NavigationBar section of the render loop.
+        -- The icon Image objects are created (and rebuilt on colour change) by the
+        -- Drawing allocation loop; Render only positions and shows them.
     end
 
     -- // Watermark \\ --
@@ -2931,37 +2953,80 @@ local Library do
 
     Library.DrawingLoopRunning = true
 
-    local function AllocateDrawings()
-        while #Pool.Squares < Pool.SquareDemand do
+    -- Creates at most `Budget` drawings per call, so growth is spread over
+    -- several ticks instead of one large burst. Returns true when done.
+    Library.Allocating = false
+
+    local function AllocateDrawings(Budget)
+        Budget = Budget or 64
+        Library.Allocating = true
+
+        while Budget > 0 and #Pool.Squares < Pool.SquareDemand do
             Pool.Squares[#Pool.Squares + 1] = NewDrawing("Square", { Filled = true, Thickness = 1, Visible = false })
+            Budget = Budget - 1
         end
-        while #Pool.Texts < Pool.TextDemand do
+        while Budget > 0 and #Pool.Texts < Pool.TextDemand do
             Pool.Texts[#Pool.Texts + 1] = NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor, Visible = false })
+            Budget = Budget - 1
         end
-        while #Pool.Images < Pool.ImageDemand do
+        while Budget > 0 and #Pool.Images < Pool.ImageDemand do
             Pool.Images[#Pool.Images + 1] = NewDrawing("Image", { Visible = false })
+            Budget = Budget - 1
         end
 
         local NB = Library.NavigationBarData
         if NB and NB.Buttons then
+            -- Changing Color on an existing Image makes it vanish, so an icon is
+            -- rebuilt here (never in Render) whenever its wanted colour changes.
             for _, Btn in NB.Buttons do
-                if not Btn._Drawing then
-                    Btn._Drawing = NewDrawing("Image", { Visible = false, Data = Btn.Icon, ZIndex = 10000 })
+                local Wanted = Btn._WantedColor or Theme["Dim"]
+                if not Btn._Drawing or Btn._IconColor ~= Wanted then
+                    local Old = Btn._Drawing
+                    Btn._Drawing = NewDrawing("Image", {
+                        Visible = false,
+                        Data = Btn.Icon,
+                        Color = Wanted,
+                        Opacity = 1,
+                        ZIndex = 10000,
+                    })
+                    Btn._IconColor = Wanted
+                    if Old then
+                        -- Carry over placement so the swap doesn't flicker.
+                        local OldCache = PropCache[Old]
+                        if OldCache and OldCache.Position then
+                            UpdateDrawing(Btn._Drawing, {
+                                Position = OldCache.Position,
+                                Size = OldCache.Size,
+                                Visible = OldCache.Visible,
+                            })
+                        end
+                        Old:Remove()
+                    end
                 end
             end
         end
+
+        Library.Allocating = false
+        return #Pool.Squares >= Pool.SquareDemand
+            and #Pool.Texts >= Pool.TextDemand
+            and #Pool.Images >= Pool.ImageDemand
     end
 
-    AllocateDrawings()
+    -- Fill the initial pool before the Render event is connected, yielding
+    -- between batches so the load doesn't hit the scheduler timeout.
+    while not AllocateDrawings(256) do
+        task.wait(0)
+    end
 
     task.spawn(function()
         while Library.DrawingLoopRunning do
-            AllocateDrawings()
+            AllocateDrawings(32)
             task.wait(0)
         end
     end)
 
     local RenderConnection = RunService.Render:Connect(function()
+        if Library.Allocating then return end
         Library:UpdateInput()
         Library.Input.Consumed = false
         Library.DropdownOverlay = nil
@@ -3042,17 +3107,15 @@ local Library do
 
                 local IconColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
 
-                if Btn._Drawing then -- allocated by the Drawing loop
+                -- Colour changes are applied by the Drawing loop (it rebuilds the
+                -- icon); Render only positions and shows the current one.
+                Btn._WantedColor = IconColor
+                if Btn._Drawing then
                     UpdateDrawing(Btn._Drawing, {
                         Visible = true,
                         Position = Vector2New(BX + IconPad, BY + IconPad),
                         Size = Vector2New(IW, IH),
-                        Data = Btn.Icon,
-                        Color = IconColor,
-                        Opacity = 1,
-                        ZIndex = 10000,
                     })
-                    Btn._IconColor = IconColor
                 end
 
                 if Library.Input.MouseClicked and Hovered and Btn.Window then
