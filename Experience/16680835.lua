@@ -2,6 +2,7 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 

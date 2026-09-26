@@ -2,6 +2,7 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
@@ -144,7 +145,7 @@ end
 -- GetBoundingBox, Position, ...) happens here, outside RunService.Render.
 
 -- Who holds a role only changes occasionally, so it's scanned a few times a second.
-function Module.Function:UpdateRoleHolders()
+function Module.Function.UpdateRoleHolders()
     local Holders = {}
 
     if Library.Flags["Render Roles"] then
@@ -162,7 +163,7 @@ function Module.Function:UpdateRoleHolders()
 end
 
 -- Positions change every frame, so they're refreshed every tick.
-function Module.Function:UpdateRenderCache()
+function Module.Function.UpdateRenderCache()
     local Targets = {}
 
     if Library.Flags["Render Roles"] then
@@ -196,7 +197,7 @@ end
 -- // Render \\ --
 -- Only iterates the cached tables and draws with DrawingImmediate.
 
-function Module.Function:Render()
+function Module.Function.Render()
     local GunPosition = Module.Stored.GunPosition
     if GunPosition then
         local Screen, OnScreen = Camera:WorldToScreenPoint(GunPosition)
@@ -334,18 +335,7 @@ ExploitsSection:Button({ Name = "Teleport To Gun", Callback = function() Module.
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
-task.spawn(function()
-    while true do
-        pcall(Module.Function.UpdateRoleHolders, Module.Function)
-        task.wait(0.25)
-    end
-end)
+task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRoleHolders) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
 
-task.spawn(function()
-    while true do
-        pcall(Module.Function.UpdateRenderCache, Module.Function)
-        task.wait(0)
-    end
-end)
-
-RunService.Render:Connect(function() Module.Function:Render() end)
+RunService.Render:Connect(Module.Function.Render)

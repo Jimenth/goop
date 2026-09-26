@@ -1,70 +1,8 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -80,7 +18,12 @@ local Module = {
     Stored = {
         Vehicles = {},
         Drones = {},
-        Armor = {}
+        Armor = {},
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderVehicles = {}, -- per-frame vehicle positions, labels and module part snapshots
+        RenderDrones = {},   -- per-frame drone positions and labels
+        RenderView = { CenterX = 0, CenterY = 0, Half = 0 },
     }
 }
 
@@ -104,8 +47,8 @@ local Vector3New = Vector3.new
 local MathMax = math.max
 local MathAbs = math.abs
 local TableSort = table.sort
-local FilledTriangle = Draw.FilledTriangle
-local Polyline = Draw.Polyline
+local FilledTriangle = DrawingImmediate.FilledTriangle
+local Polyline = DrawingImmediate.Polyline
 
 -- // Interface \\ --
 
@@ -204,14 +147,11 @@ function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     return Size - 1
 end
 
-function Module.Function:ProjectPartCorners(Part, WriteOffset)
-    if not (Part and Part:IsA("BasePart")) then
-        return WriteOffset
-    end
-
-    local PartCFrame = Part.CFrame
+-- Snapshot is { CFrame, Size }, taken outside RunService.Render.
+function Module.Function:ProjectPartCorners(Snapshot, WriteOffset)
+    local PartCFrame = Snapshot.CFrame
     local Position = PartCFrame.Position
-    local Size = Part.Size
+    local Size = Snapshot.Size
 
     local PositionX = Position.X
     local PositionY = Position.Y
@@ -524,67 +464,158 @@ function Module.Function:RestoreArmor()
     end
 end
 
-function Module.Function:RenderVehicle(Data, HumanoidRootPart, CenterX, CenterY, Half)
+-- // Render Cache \\ --
+-- Everything that touches the game (positions, teams, attributes, part CFrames,
+-- viewport size) happens here, outside RunService.Render.
+
+local function SnapshotParts(Parts)
+    local Snapshots = {}
+    for _, Part in ipairs(Parts) do
+        if Part and Part.Parent then
+            Snapshots[#Snapshots + 1] = { CFrame = Part.CFrame, Size = Part.Size }
+        end
+    end
+    return Snapshots
+end
+
+local function IsTeammate(Team)
+    if not is_team_check_active() then return false end
+    return LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name
+end
+
+function Module.Function:CacheVehicleEntry(Data, HumanoidRootPart)
     local Vehicle = Data.Vehicle
     local PrimaryPart = Data.PrimaryPart
 
-    if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then return end
+    if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then return nil end
+    if IsTeammate(Data.Team) then return nil end
 
-    if is_team_check_active() then
-        if LocalPlayer.Team and LocalPlayer.Team.Parent and Data.Team == LocalPlayer.Team.Name then
-            return
-        end
-    end
-
+    local Flags = Library.Flags
     local Position = PrimaryPart.CFrame.Position
 
-    local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
-    if not OnScreen then return end
-
-    local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
     local Distance
-
     if HumanoidRootPart then
-        Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - Position) / 2.78125)
+        Distance = Flags["Vehicle Distance"] and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - Position) / 2.78125)
     else
         Distance = 0
     end
 
-    local NameWidth = typeof(Name) == "string" and Draw.GetTextBounds("Verdana", 13, Name).X or 0
-    local DistanceWidth = typeof(Distance) == "string" and Draw.GetTextBounds("Verdana", 13, Distance).X or 0
+    local UseOccupied = Flags["Use Occupied Color"] and Data.Occupied
+
+    local Groups
+    if Flags["Render Modules"] and Data.Groups then
+        Groups = {}
+        for _, Group in ipairs(Data.Groups) do
+            local Enabled = (Group.Type == "Engine" and Flags["Vehicle Engine"]) or (Group.Type == "Ammo" and Flags["Vehicle Ammo"])
+            if Enabled then
+                Groups[#Groups + 1] = {
+                    Color = Group.Type == "Engine" and Flags["Engine Color"] or Flags["Ammo Color"],
+                    Snapshots = SnapshotParts(Group.Parts),
+                }
+            end
+        end
+    end
+
+    return {
+        Position = Position,
+        Name = Flags["Vehicle Names"] and Vehicle.Name,
+        Distance = Distance,
+        NameColor = UseOccupied and Flags["Occupied Color"] or Flags["Name Color"],
+        DistanceColor = UseOccupied and Flags["Occupied Color"] or Flags["Distance Color"],
+        Groups = Groups,
+    }
+end
+
+function Module.Function:CacheDroneEntry(Data, HumanoidRootPart)
+    local Part = Data.Part
+    if not Part or not Part.Parent then return nil end
+
+    if is_team_check_active() then
+        local Team
+        if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
+            Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
+        end
+        if IsTeammate(Team) then return nil end
+    end
+
+    local Position = Part.CFrame.Position
+
+    local Text = "Drone"
+    if HumanoidRootPart then
+        Text = string.format("Drone [%.0f]", vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125)
+    end
+
+    return { Position = Position, Text = Text }
+end
+
+function Module.Function.UpdateRenderCache()
+    if not LocalPlayer then return end
+
+    local Character = LocalPlayer.Character
+    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+
+    local Viewport = Camera.ViewportSize
+    Module.Stored.RenderView = {
+        CenterX = Viewport.X * 0.5,
+        CenterY = Viewport.Y * 0.5,
+        Half = Library.Flags["Field of View"].Value * 0.5,
+    }
+
+    local Vehicles = {}
+    if Library.Flags["Render Vehicles"] then
+        for _, Data in pairs(Module.Stored.Vehicles) do
+            local Ok, Entry = pcall(Module.Function.CacheVehicleEntry, Module.Function, Data, HumanoidRootPart)
+            if Ok and Entry then
+                Vehicles[#Vehicles + 1] = Entry
+            end
+        end
+    end
+    Module.Stored.RenderVehicles = Vehicles
+
+    local Drones = {}
+    if Library.Flags["Render Drones"] then
+        for _, Data in pairs(Module.Stored.Drones) do
+            local Ok, Entry = pcall(Module.Function.CacheDroneEntry, Module.Function, Data, HumanoidRootPart)
+            if Ok and Entry then
+                Drones[#Drones + 1] = Entry
+            end
+        end
+    end
+    Module.Stored.RenderDrones = Drones
+end
+
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
+
+function Module.Function:RenderVehicle(Entry, View)
+    local Screen, OnScreen = Camera:WorldToScreenPoint(Entry.Position)
+    if not OnScreen then return end
+
+    local Name, Distance = Entry.Name, Entry.Distance
+
+    local NameWidth = typeof(Name) == "string" and DrawingImmediate.GetTextBounds(Library.Font, 13, Name).X or 0
+    local DistanceWidth = typeof(Distance) == "string" and DrawingImmediate.GetTextBounds(Library.Font, 13, Distance).X or 0
     local Padding = Name and Distance and 4 or 0
 
     local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
     local Y = Screen.Y
 
     if Name then
-        local NameColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
-        Draw.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Verdana")
+        DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, Entry.NameColor.Color, Entry.NameColor.Alpha, Name, true, Library.Font)
         X = X + NameWidth + Padding
     end
 
     if Distance then
-        local DistanceColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
-        Draw.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Verdana")
+        DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, Entry.DistanceColor.Color, Entry.DistanceColor.Alpha, tostring(Distance), true, Library.Font)
     end
 
-    local Groups = Data.Groups
-    if not (Library.Flags["Render Modules"] and Groups) then return end
-    if MathAbs(Screen.X - CenterX) > Half or MathAbs(Screen.Y - CenterY) > Half then return end
+    if not Entry.Groups then return end
+    if MathAbs(Screen.X - View.CenterX) > View.Half or MathAbs(Screen.Y - View.CenterY) > View.Half then return end
 
-    for _, Group in ipairs(Groups) do
-        local GroupType = Group.Type
-
-        local Enabled = (GroupType == "Engine" and Library.Flags["Vehicle Engine"]) or (GroupType == "Ammo" and Library.Flags["Vehicle Ammo"])
-        if not Enabled then continue end
-
-        local Color = GroupType == "Engine" and Library.Flags["Engine Color"] or Library.Flags["Ammo Color"]
-
+    for _, Group in ipairs(Entry.Groups) do
         local PointCount = 0
-        for _, Part in ipairs(Group.Parts) do
-            if Part and Part.Parent then
-                PointCount = self:ProjectPartCorners(Part, PointCount)
-            end
+        for _, Snapshot in ipairs(Group.Snapshots) do
+            PointCount = self:ProjectPartCorners(Snapshot, PointCount)
         end
 
         if PointCount == 0 then continue end
@@ -594,59 +625,23 @@ function Module.Function:RenderVehicle(Data, HumanoidRootPart, CenterX, CenterY,
         if Size == 0 then continue end
 
         local Verts = self:BuildHullVerts(Convex.Scratch.Hull, Size)
-        self:DrawPolygon(Verts, Size, Color.Color, Color.Alpha)
-        self:DrawOutline(Verts, Size, Color.Color, Color.Alpha, 1)
+        self:DrawPolygon(Verts, Size, Group.Color.Color, Group.Color.Alpha)
+        self:DrawOutline(Verts, Size, Group.Color.Color, Group.Color.Alpha, 1)
     end
 end
 
-function Module.Function:RenderDrone(Data, HumanoidRootPart)
-    local Part = Data.Part
-    if not Part or not Part.Parent then return end
+function Module.Function.Render()
+    local View = Module.Stored.RenderView
 
-    if is_team_check_active() then
-        local Team
-        if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
-            Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
-        end
-        if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
-            return
-        end
+    for _, Entry in Module.Stored.RenderVehicles do
+        pcall(Module.Function.RenderVehicle, Module.Function, Entry, View)
     end
 
-    local Position = Part.CFrame.Position
-
-    local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
-    if not OnScreen then return end
-
-    local DroneText = "Drone"
-    if HumanoidRootPart then
-        local Distance = vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125
-        DroneText = string.format("Drone [%.0f]", Distance)
-    end
-
-    Draw.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Verdana")
-end
-
-function Module.Function:Render()
-    if not LocalPlayer then return end
-
-    local Character = LocalPlayer.Character
-    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
-
-    if Library.Flags["Render Vehicles"] then
-        local Viewport = Camera.ViewportSize
-        local CenterX = Viewport.X * 0.5
-        local CenterY = Viewport.Y * 0.5
-        local Half = Library.Flags["Field of View"].Value * 0.5
-
-        for _, Data in pairs(Module.Stored.Vehicles) do
-            pcall(Module.Function.RenderVehicle, Module.Function, Data, HumanoidRootPart, CenterX, CenterY, Half)
-        end
-    end
-
-    if Library.Flags["Render Drones"] then
-        for _, Data in pairs(Module.Stored.Drones) do
-            pcall(Module.Function.RenderDrone, Module.Function, Data, HumanoidRootPart)
+    local Color = Library.Flags["Drone Color"]
+    for _, Entry in Module.Stored.RenderDrones do
+        local Screen, OnScreen = Camera:WorldToScreenPoint(Entry.Position)
+        if OnScreen then
+            DrawingImmediate.OutlinedText(Screen, 13, Color.Color, Color.Alpha, Entry.Text, true, Library.Font)
         end
     end
 end
@@ -660,19 +655,11 @@ task.spawn(function()
     end
 end)
 
-task.spawn(function()
-    while true do
-        task.wait(5)
-        if Library.Flags["Disable Armor"] then
-            pcall(Module.Function.ScanArmor, Module.Function)
-        end
-    end
-end)
+task.spawn(function() while true do task.wait(5) if Library.Flags["Disable Armor"] then pcall(Module.Function.ScanArmor, Module.Function) end end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
 
 -- // Initalize \\ --
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Library:Watermark("Goop")
 
-ConnectRender(function()
-    pcall(Module.Function.Render, Module.Function)
-end)
+RunService.Render:Connect(Module.Function.Render)

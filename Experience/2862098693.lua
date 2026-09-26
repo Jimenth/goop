@@ -1,70 +1,8 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -103,7 +41,11 @@ local Module = {
             Character = nil,
             HumanoidRootPart = nil,
             Position = Vector3.new(0, 0, 0)
-        }
+        },
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderCache = {},    -- { Position, Text, Color, Alpha } (every tick)
+        RenderTarget = nil,  -- indicator/clothing data for the closest entity (every tick)
     }
 }
 
@@ -1019,55 +961,69 @@ function Module.Function:Cache()
     end
 end
 
-function Module.Function:Render()
-    if not Module.Stored.Client.HumanoidRootPart then return end
-    
-    if Library.Flags["Render Drops"] then
-        for _, Data in pairs(Module.Stored.Cache.Drops) do
-            local Object = Data.Object
-            if Object and Object.Parent then
-                local Screen, OnScreen = Camera:WorldToScreenPoint(Object.Position)
-                if OnScreen then
-                    Draw.OutlinedText(Screen, 13, Library.Flags["Drop Color"].Color, Library.Flags["Drop Color"].Alpha, Data.Name, true, "Proggy")
+-- // Render Cache \\ --
+-- Everything that touches the game (positions, the closest target, its health,
+-- weapon, clothing and stats, camera field of view) happens here, outside
+-- RunService.Render.
+
+local Restored = false
+
+function Module.Function.UpdateZoom()
+    if Module.Stored.Zoom then
+        Restored = false
+        Camera.FieldOfView = Library.Flags["Zoom Amount"].Value
+    elseif not Restored then
+        Camera.FieldOfView = Module.Stored.Original.FieldOfView
+        Restored = true
+    end
+end
+
+function Module.Function.UpdateRenderCache()
+    local Flags = Library.Flags
+    local Cache = {}
+
+    if Module.Stored.Client.HumanoidRootPart then
+        local function Add(Enabled, Storage, ColorFlag, Suffix)
+            if not Enabled then return end
+
+            local Color = Flags[ColorFlag]
+            for _, Data in pairs(Storage) do
+                local Object = Data.Object
+                if Object and Object.Parent then
+                    Cache[#Cache + 1] = {
+                        Position = Object.Position,
+                        Text = Suffix and (Data.Name .. Suffix) or Data.Name,
+                        Color = Color.Color,
+                        Alpha = Color.Alpha,
+                    }
                 end
             end
+        end
+
+        Add(Flags["Render Drops"], Module.Stored.Cache.Drops, "Drop Color")
+        Add(Flags["Render Corpses"], Module.Stored.Cache.Corpses, "Corpse Color", "'s Corpse")
+        Add(Flags["Render Vehicles"], Module.Stored.Cache.Vehicles, "Vehicle Color")
+        Add(Flags["Render Exits"], Module.Stored.Cache.Exits, "Exit Color")
+    end
+
+    Module.Stored.RenderCache = Cache
+end
+
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
+
+function Module.Function.Render()
+    for _, Entry in Module.Stored.RenderCache do
+        local Screen, OnScreen = Camera:WorldToScreenPoint(Entry.Position)
+        if OnScreen then
+            DrawingImmediate.OutlinedText(Screen, 13, Entry.Color, Entry.Alpha, Entry.Text, true, Library.Font)
         end
     end
 
-    if Library.Flags["Render Corpses"] then
-        for _, Data in pairs(Module.Stored.Cache.Corpses) do
-            local Object = Data.Object
-            if Object and Object.Parent then
-                local Screen, OnScreen = Camera:WorldToScreenPoint(Object.Position)
-                if OnScreen then
-                    Draw.OutlinedText(Screen, 13, Library.Flags["Corpse Color"].Color, Library.Flags["Corpse Color"].Alpha, Data.Name..  "'s Corpse", true, "Proggy")
-                end
-            end
-        end
-    end
-
-    if Library.Flags["Render Vehicles"] then
-        for _, Data in pairs(Module.Stored.Cache.Vehicles) do
-            local Object = Data.Object
-            if Object and Object.Parent then
-                local Screen, OnScreen = Camera:WorldToScreenPoint(Object.Position)
-                if OnScreen then
-                    Draw.OutlinedText(Screen, 13, Library.Flags["Vehicle Color"].Color, Library.Flags["Vehicle Color"].Alpha, Data.Name, true, "Proggy")
-                end
-            end
-        end
-    end
-
-    if Library.Flags["Render Exits"] then
-        for _, Data in pairs(Module.Stored.Cache.Exits) do
-            local Object = Data.Object
-            if Object and Object.Parent then
-                local Screen, OnScreen = Camera:WorldToScreenPoint(Object.Position)
-                if OnScreen then
-                    Draw.OutlinedText(Screen, 13, Library.Flags["Exit Color"].Color, Library.Flags["Exit Color"].Alpha, Data.Name, true, "Proggy")
-                end
-            end
-        end
+    local Target = Module.Stored.RenderTarget
+    if Target then
+        Module.Function:DrawClothing(Target.ClothingPosition, Target, 1)
+        Module.Function:DrawIndicator(Target.IndicatorPosition, Target, 1)
     end
 end
 
@@ -1282,15 +1238,15 @@ end)
 -- // Target Indicators (Shit) \\ --
 
 local function DrawRect(X, Y, W, H, Color, Opacity)
-    Draw.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, H), Color, Opacity or 1)
+    DrawingImmediate.FilledRectangle(Vector2.new(X, Y), Vector2.new(W, H), Color, Opacity or 1)
 end
 
 local function DrawText(X, Y, Color, Text, Opacity, Center)
-    Draw.OutlinedText(Vector2.new(X, Y), Library.FontSize, Color, Opacity or 1, Text, Center or false, Library.Font)
+    DrawingImmediate.OutlinedText(Vector2.new(X, Y), Library.FontSize, Color, Opacity or 1, Text, Center or false, Library.Font)
 end
 
 local function GetTextBounds(Text)
-    return Draw.GetTextBounds(Library.Font, Library.FontSize, Text)
+    return DrawingImmediate.GetTextBounds(Library.Font, Library.FontSize, Text)
 end
 
 local function DrawBox(X, Y, W, H, Outer, Border, Fill, Opacity)
@@ -1299,24 +1255,14 @@ local function DrawBox(X, Y, W, H, Outer, Border, Fill, Opacity)
     DrawRect(X + 2, Y + 2, W - 4, H - 4, Fill, Opacity)
 end
 
-function Module.Function:DrawIndicator(Position, Character, Transparency)
-    local X, Y = Position.X, Position.Y
-    local Width = Interface.Dimensions.Width
-    local Height = Interface.Dimensions.Height
-
-    local ContentX = X + 4
-    local ContentY = Y + 4
-    local ContentW = Width - 8
-    local ContentH = Height - 8
-
-    DrawBox(X, Y, Width, Height, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
-    DrawRect(X + 2, Y + 2, Width - 4, 2, Library.Theme.Accent, Transparency)
-    DrawRect(ContentX, ContentY, ContentW, ContentH, Library.Theme.Background, Transparency)
+-- Reads everything the indicator and clothing panels show. Runs outside Render.
+function Module.Function:GetTargetData(Character)
+    local Data = {}
 
     local WeaponName = Module.Function:GetWeapon(Character) or "None"
     if typeof(WeaponName) ~= "string" then WeaponName = tostring(WeaponName or "") end
     if WeaponName == "" or WeaponName == "None" then WeaponName = "No Weapon" end
-    DrawText(X + Width / 2, ContentY + 12, Library.Theme.White, WeaponName, Transparency, true)
+    Data.WeaponName = WeaponName
 
     local CurrentHealth = 0
     local MaxHealth = 100
@@ -1334,44 +1280,18 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
             CurrentHealth = tonumber(Humanoid.Health) or 0
         end
     end
-
-    local Percent = math.clamp((MaxHealth == 0) and 0 or (CurrentHealth / MaxHealth), 0, 1)
-    local BarW = ContentW - 18
-    local BarH = Library.FontSize + 4
-    local BarX = ContentX + 9
-    local BarY = ContentY + ContentH - (BarH + 6)
-    local FillW = math.floor((BarW - 4) * Percent)
-    if Percent > 0 and FillW < 2 then FillW = 2 end
+    Data.CurrentHealth = CurrentHealth
+    Data.MaxHealth = MaxHealth
 
     local LocalCharacter = LocalPlayer.Character
-    if LocalCharacter then
-        local LocalHumanoid = LocalCharacter:FindFirstChildOfClass("Humanoid")
-        if LocalHumanoid then
-            local LocalHealth = LocalHumanoid.Health
-            local Indication = "Even"
-            local IndicationColor = Library.Theme.Dim
-            if LocalHealth > CurrentHealth then
-                Indication, IndicationColor = "You're Winning!", Color3.fromRGB(0, 255, 0)
-            elseif LocalHealth < CurrentHealth then
-                Indication, IndicationColor = "You're Losing!", Color3.fromRGB(255, 0, 0)
-            end
-            DrawText(BarX, BarY - 15, IndicationColor, Indication, Transparency)
-        end
-    end
-
-    DrawBox(BarX, BarY, BarW, BarH, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
-    if FillW > 0 then
-        DrawRect(BarX + 2, BarY + 2, FillW, BarH - 4, Library.Theme["Accent"], Transparency)
-        DrawRect(BarX + 2, BarY + 2, math.max(FillW - 2, 0), BarH - 4, Library.Theme.Accent, Transparency)
-    end
-
-    local HealthText = tostring(math.floor(CurrentHealth)) .. "/" .. tostring(MaxHealth)
-    DrawText(BarX + BarW / 2, BarY + (BarH / 2) - 5, Library.Theme.White, HealthText, Transparency, true)
+    local LocalHumanoid = LocalCharacter and LocalCharacter:FindFirstChildOfClass("Humanoid")
+    Data.LocalHealth = LocalHumanoid and LocalHumanoid.Health
 
     local Kills, Deaths = 0, 0
-    if game.ReplicatedStorage:FindFirstChild("Players") and Character then
+    local PlayerFolders = game.ReplicatedStorage:FindFirstChild("Players")
+    if PlayerFolders and Character then
         local Name
-        for _, Player in game:GetService("Players"):GetChildren() do
+        for _, Player in Players:GetChildren() do
             if Player.Character == Character then
                 Name = Player.Name
                 break
@@ -1379,7 +1299,7 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
         end
 
         if Name then
-            local PlayerFolder = game.ReplicatedStorage:FindFirstChild("Players"):FindFirstChild(Name)
+            local PlayerFolder = PlayerFolders:FindFirstChild(Name)
             if PlayerFolder then
                 local Stats = PlayerFolder:FindFirstChild("Status")
                     and PlayerFolder.Status:FindFirstChild("Journey")
@@ -1391,7 +1311,86 @@ function Module.Function:DrawIndicator(Position, Character, Transparency)
             end
         end
     end
+    Data.Kills, Data.Deaths = Kills, Deaths
 
+    Data.Mask, Data.Head, Data.Chestrig, Data.Leg, Data.Back = Module.Function:GetClothing(Character)
+
+    return Data
+end
+
+function Module.Function.UpdateRenderTarget()
+    local Entity = Module.Function:GetClosestEntity()
+
+    local Target
+    if Entity and Entity.ClassName == "Player" then
+        Target = Entity.Character
+    elseif Entity and Entity.ClassName == "Model" and Entity:FindFirstChild("HumanoidRootPart") then
+        Target = Entity
+    end
+
+    if not Target then
+        Module.Stored.RenderTarget = nil
+        return
+    end
+
+    local Data = Module.Function:GetTargetData(Target)
+    local Viewport = Camera.ViewportSize
+
+    Data.ClothingPosition = Vector2.new((Viewport.X / 2) - 200, Viewport.Y - Interface.Dimensions.Height - 180)
+    Data.IndicatorPosition = Vector2.new((Viewport.X / 2) - (Interface.Dimensions.Width / 2), Viewport.Y - Interface.Dimensions.Height - 100)
+
+    Module.Stored.RenderTarget = Data
+end
+
+-- Drawing only; Data comes from GetTargetData.
+function Module.Function:DrawIndicator(Position, Data, Transparency)
+    local X, Y = Position.X, Position.Y
+    local Width = Interface.Dimensions.Width
+    local Height = Interface.Dimensions.Height
+
+    local ContentX = X + 4
+    local ContentY = Y + 4
+    local ContentW = Width - 8
+    local ContentH = Height - 8
+
+    DrawBox(X, Y, Width, Height, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
+    DrawRect(X + 2, Y + 2, Width - 4, 2, Library.Theme.Accent, Transparency)
+    DrawRect(ContentX, ContentY, ContentW, ContentH, Library.Theme.Background, Transparency)
+
+    DrawText(X + Width / 2, ContentY + 12, Library.Theme.White, Data.WeaponName, Transparency, true)
+
+    local CurrentHealth = Data.CurrentHealth
+    local MaxHealth = Data.MaxHealth
+
+    local Percent = math.clamp((MaxHealth == 0) and 0 or (CurrentHealth / MaxHealth), 0, 1)
+    local BarW = ContentW - 18
+    local BarH = Library.FontSize + 4
+    local BarX = ContentX + 9
+    local BarY = ContentY + ContentH - (BarH + 6)
+    local FillW = math.floor((BarW - 4) * Percent)
+    if Percent > 0 and FillW < 2 then FillW = 2 end
+
+    if Data.LocalHealth then
+        local Indication = "Even"
+        local IndicationColor = Library.Theme.Dim
+        if Data.LocalHealth > CurrentHealth then
+            Indication, IndicationColor = "You're Winning!", Color3.fromRGB(0, 255, 0)
+        elseif Data.LocalHealth < CurrentHealth then
+            Indication, IndicationColor = "You're Losing!", Color3.fromRGB(255, 0, 0)
+        end
+        DrawText(BarX, BarY - 15, IndicationColor, Indication, Transparency)
+    end
+
+    DrawBox(BarX, BarY, BarW, BarH, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
+    if FillW > 0 then
+        DrawRect(BarX + 2, BarY + 2, FillW, BarH - 4, Library.Theme["Accent"], Transparency)
+        DrawRect(BarX + 2, BarY + 2, math.max(FillW - 2, 0), BarH - 4, Library.Theme.Accent, Transparency)
+    end
+
+    local HealthText = tostring(math.floor(CurrentHealth)) .. "/" .. tostring(MaxHealth)
+    DrawText(BarX + BarW / 2, BarY + (BarH / 2) - 5, Library.Theme.White, HealthText, Transparency, true)
+
+    local Kills, Deaths = Data.Kills, Data.Deaths
     local Ratio = Deaths == 0 and string.format("%.2f", Kills) or string.format("%.2f", Kills / Deaths)
     local KDText = "K/D: " .. Ratio
     DrawText(BarX + BarW - GetTextBounds(KDText).X, BarY - 15, Library.Theme.White, KDText, Transparency)
@@ -1399,7 +1398,8 @@ end
 
 -- // Clothing \\ --
 
-function Module.Function:DrawClothing(Position, Character, Transparency)
+-- Drawing only; Data comes from GetTargetData.
+function Module.Function:DrawClothing(Position, Data, Transparency)
     local X, Y = Position.X, Position.Y
     local Width = 400
     local Height = 70
@@ -1412,8 +1412,6 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
     DrawBox(X, Y, Width, Height, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
     DrawRect(X + 2, Y + 2, Width - 4, 2, Library.Theme.Accent, Transparency)
     DrawRect(ContentX, ContentY, ContentW, ContentH, Library.Theme.Background, Transparency)
-
-    local Mask, Head, Chestrig, Leg, Back = Module.Function:GetClothing(Character)
 
     local BoxWidth = 70
     local BoxHeight = 30
@@ -1428,11 +1426,11 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
     end
 
     local Slots = {
-        { Name = "Mask", Value = Mask or "None" },
-        { Name = "Helmet", Value = Head or "None" },
-        { Name = "Rig", Value = Chestrig or "None" },
-        { Name = "Backpack", Value = Back or "None" },
-        { Name = "Legs", Value = Leg or "None" },
+        { Name = "Mask", Value = Data.Mask or "None" },
+        { Name = "Helmet", Value = Data.Head or "None" },
+        { Name = "Rig", Value = Data.Chestrig or "None" },
+        { Name = "Backpack", Value = Data.Back or "None" },
+        { Name = "Legs", Value = Data.Leg or "None" },
     }
 
     for Index, Item in Slots do
@@ -1440,7 +1438,7 @@ function Module.Function:DrawClothing(Position, Character, Transparency)
 
         DrawText(BoxX + BoxWidth / 2, LabelY, Library.Theme.Dim, Item.Name, Transparency, true)
         DrawBox(BoxX, BoxY, BoxWidth, BoxHeight, Library.Theme.Black, Library.Theme.Border, Library.Theme.Background, Transparency)
-        DrawText(BoxX + BoxWidth / 2, BoxY + BoxHeight / 2 - 5, Library.Theme.White, Shorten(Item.Value, 11), Transparency, true)
+        DrawText(BoxX + BoxWidth / 2, BoxY + BoxHeight / 2 - 5, Library.Theme.White, Shorten(tostring(Item.Value), 11), Transparency, true)
     end
 end
 
@@ -1456,37 +1454,9 @@ WeaponSection:Button({Name = "Instant Aim", Callback = function() gc.setgc("AimI
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Module.Function:CacheBallistics()
-local Restored = false
 
-ConnectRender(function()
-    Module.Function:Render()
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateZoom) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderTarget) end end)
 
-    if Module.Stored.Zoom then
-        Restored = false
-        Camera.FieldOfView = Library.Flags["Zoom Amount"].Value
-    elseif not Restored then
-        Camera.FieldOfView = Module.Stored.Original.FieldOfView
-        Restored = true
-    end
-    
-    local Entity = Module.Function:GetClosestEntity()
-    if not Entity then return end
-    
-    local Target
-    if Entity.ClassName == "Player" then
-        if not Entity.Character then return end
-        Target = Entity.Character
-    elseif Entity.ClassName == "Model" then
-        local HumanoidRootPart = Entity:FindFirstChild("HumanoidRootPart")
-        if not HumanoidRootPart then return end
-        Target = Entity
-    else
-        return
-    end
-    
-    local ClothingWindowPosition = Vector2.new((Camera.ViewportSize.X / 2) - 200, Camera.ViewportSize.Y - Interface.Dimensions.Height - 180)
-    Module.Function:DrawClothing(ClothingWindowPosition, Target, 1)
-    
-    local WindowPosition = Vector2.new((Camera.ViewportSize.X / 2) - (Interface.Dimensions.Width / 2), Camera.ViewportSize.Y - Interface.Dimensions.Height - 100)
-    Module.Function:DrawIndicator(WindowPosition, Target, 1)
-end)
+RunService.Render:Connect(Module.Function.Render)

@@ -1,69 +1,7 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
 local Camera = workspace.CurrentCamera
 
 local Module = {
@@ -77,7 +15,10 @@ local Module = {
     
     Stored = {
         Objects = {},
-        Entities = {}
+        Entities = {},
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderCache = {}, -- { Position, Class, Name } (every tick)
     }
 }
 
@@ -324,19 +265,33 @@ function Module.Function.PostLocal()
     end
 end
 
-function Module.Function.Render() 
+-- // Render Cache \\ --
+-- Positions are read here, outside RunService.Render.
+
+function Module.Function.UpdateRenderCache()
+    local Cache = {}
+
     for _, Entry in Module.Stored.Objects do
-        if Library.Flags["Render ".. Entry.Class] then
-            if Entry and Entry.Model then
-                local Primary = Entry.Object
-                if not Primary then continue end
-
-                local Screen, Visible = Camera:WorldToScreenPoint(Primary.Position)
-
-                if Visible then
-                    Draw.OutlinedText(Screen, 13, Library.Flags[Entry.Class.. " Color"].Color, Library.Flags[Entry.Class.. " Color"].Alpha, Entry.Name, true, "Pixel")
-                end
+        if Entry and Entry.Model and Library.Flags["Render " .. Entry.Class] then
+            local Primary = Entry.Object
+            if Primary and Primary.Parent then
+                Cache[#Cache + 1] = { Position = Primary.Position, Class = Entry.Class, Name = Entry.Name }
             end
+        end
+    end
+
+    Module.Stored.RenderCache = Cache
+end
+
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
+
+function Module.Function.Render()
+    for _, Entry in Module.Stored.RenderCache do
+        local Screen, Visible = Camera:WorldToScreenPoint(Entry.Position)
+        if Visible then
+            local Color = Library.Flags[Entry.Class .. " Color"]
+            DrawingImmediate.OutlinedText(Screen, 13, Color.Color, Color.Alpha, Entry.Name, true, Library.Font)
         end
     end
 end
@@ -345,5 +300,6 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
 RunService.PostLocal:Connect(Module.Function.PostLocal)
-ConnectRender(Module.Function.Render)
+RunService.Render:Connect(Module.Function.Render)

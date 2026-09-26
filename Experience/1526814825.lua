@@ -3,6 +3,7 @@
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -87,7 +88,7 @@ function Module.Function:GetRebirthCost()
     return Value * Multiplier
 end
 
-function Module.Function:UpdateInput()
+function Module.Function.UpdateInput()
     local Mouse = UserInputService:GetMouseLocation()
     Module.Stored.Mouse.X = Mouse.X
     Module.Stored.Mouse.Y = Mouse.Y
@@ -379,4 +380,4 @@ Automation:Button({Name = "Equip Loadout", Callback = function() Module.Function
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
-RunService.PostLocal:Connect(function() Module.Function:UpdateInput() end)
+RunService.PostLocal:Connect(Module.Function.UpdateInput)

@@ -1,70 +1,8 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local Camera = Workspace.CurrentCamera
@@ -133,7 +71,11 @@ local Module = {
 
     Stored = {
         Game = {},
-        Base = {}
+        Base = {},
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderGame = {}, -- { Position, Text, Color, Alpha } (every tick)
+        RenderBase = {}, -- { Position, Hull, Text, Color, Alpha } (every tick)
     },
 
     Armor = {"Armor_59","Armor_60","Armor_63", "Armor_111","Armor_112","Armor_113","Armor_114","Armor_115", "Armor_116","Armor_117","Armor_118","Armor_119","Armor_120", "Armor_121","Armor_122","Armor_123","Armor_124","Armor_125", "Armor_141","Armor_142","Armor_143","Armor_145","Armor_146", "Armor_147","Armor_148","Armor_149","Armor_150","Armor_152", "Armor_153","Armor_154","Armor_155","Armor_156","Armor_157", "Armor_158","Armor_159","Armor_222","Armor_223","Armor_271", "Armor_272","Armor_298","Armor_308","Armor_309"}
@@ -281,13 +223,15 @@ function Module.Function:Color(Class, Name)
     return Library.Flags[Class.. " Color"].Color
 end
 
-function Module.Function:Hull(Part)
-    local Position = Part.Position
-    local Half = Part.Size * 0.5
+-- Snapshot is { Position, Size, RightVector, UpVector, LookVector }, taken
+-- outside RunService.Render by UpdateRenderCache.
+function Module.Function:Hull(Snapshot)
+    local Position = Snapshot.Position
+    local Half = Snapshot.Size * 0.5
 
-    local Right = Part.RightVector * Half.X
-    local Up = Part.UpVector * Half.Y
-    local Look = Part.LookVector * Half.Z
+    local Right = Snapshot.RightVector * Half.X
+    local Up = Snapshot.UpVector * Half.Y
+    local Look = Snapshot.LookVector * Half.Z
 
     local Points = table.create(8)
     local Count = 0
@@ -705,146 +649,204 @@ function Module.Function.Cache()
     end
 end
 
-function Module.Function.Render()
-    if Library.Flags["Armor Viewer"] then
-        local Target = Module.Function:GetClosest()
+-- // Armor Viewer \\ --
+-- Runs in its own loop: it scans players, reads files and creates Image
+-- drawings, none of which may happen inside RunService.Render.
 
-        if not Target then
-            if CurrentTarget then
-                Module.Function:ClearImages()
-                CurrentTarget, CurrentSignature = nil, nil
-            end
-            return
+function Module.Function.UpdateArmorViewer()
+    if not Library.Flags["Armor Viewer"] then
+        if CurrentTarget then
+            Module.Function:ClearImages()
+            CurrentTarget, CurrentSignature = nil, nil
         end
-
-        local Armor = Module.Function:GetArmor(Target.Character)
-        local Signature = table.concat(Armor, "|")
-
-        if Target == CurrentTarget and Signature == CurrentSignature then
-            return
-        end
-
-        CurrentTarget, CurrentSignature = Target, Signature
-        Module.Function:ClearImages()
-
-        local Count = math.min(#Armor, 7)
-        local Spacing = 10
-
-        local TotalWidth = (Count * Size) + ((Count - 1) * Spacing)
-        local StartX = (Camera.ViewportSize.X - TotalWidth) / 2
-
-        local BottomPadding = 180
-        local CenterY = Camera.ViewportSize.Y - Size - BottomPadding
-
-        for i = 1, Count do
-            local ID = Armor[i]
-
-            if isfile(Module.Function:ImagePath(ID)) then
-                local Image = Drawing.new("Image")
-
-                Image.Size = Vector2.new(Size, Size)
-                Image.Color = Color3.fromRGB(255, 255, 255)
-                Image.Opacity = 1
-                Image.ZIndex = 5
-                Image.Visible = true
-
-                Image.Position = Vector2.new(
-                    StartX + (i - 1) * (Size + Spacing),
-                    CenterY
-                )
-
-                Image.Data = readfile(Module.Function:ImagePath(ID))
-                table.insert(ActiveImages, Image)
-            end
-        end
+        return
     end
 
+    local Target = Module.Function:GetClosest()
+
+    if not Target then
+        if CurrentTarget then
+            Module.Function:ClearImages()
+            CurrentTarget, CurrentSignature = nil, nil
+        end
+        return
+    end
+
+    local Armor = Module.Function:GetArmor(Target.Character)
+    local Signature = table.concat(Armor, "|")
+
+    if Target == CurrentTarget and Signature == CurrentSignature then
+        return
+    end
+
+    CurrentTarget, CurrentSignature = Target, Signature
+    Module.Function:ClearImages()
+
+    local Count = math.min(#Armor, 7)
+    local Spacing = 10
+
+    local TotalWidth = (Count * Size) + ((Count - 1) * Spacing)
+    local StartX = (Camera.ViewportSize.X - TotalWidth) / 2
+
+    local BottomPadding = 180
+    local CenterY = Camera.ViewportSize.Y - Size - BottomPadding
+
+    for i = 1, Count do
+        local ID = Armor[i]
+
+        if isfile(Module.Function:ImagePath(ID)) then
+            local Image = Drawing.new("Image")
+
+            Image.Size = Vector2.new(Size, Size)
+            Image.Color = Color3.fromRGB(255, 255, 255)
+            Image.Opacity = 1
+            Image.ZIndex = 5
+            Image.Visible = true
+
+            Image.Position = Vector2.new(
+                StartX + (i - 1) * (Size + Spacing),
+                CenterY
+            )
+
+            Image.Data = readfile(Module.Function:ImagePath(ID))
+            table.insert(ActiveImages, Image)
+        end
+    end
+end
+
+-- // Render Cache \\ --
+-- Everything that touches the game (positions, attributes, FindFirstChild,
+-- text labels, part CFrames) happens here, outside RunService.Render.
+
+function Module.Function:EntryName(Entry, Distance)
+    local Suffix = " [" .. math.floor(Distance) .. "]"
+
+    if Entry.Class == "Body Bag" then
+        local Owner = Entry.Model:GetAttribute("OwnerName")
+        return (Owner ~= nil and Owner .. "'s Body Bag" or "Body Bag") .. Suffix
+    elseif Entry.Class == "Sleeper" then
+        local NameTag = Entry.Model:FindFirstChild("NameTag")
+        local Label = NameTag and NameTag:FindFirstChild("Label")
+        local Owner = Label and Label.Text
+        return (Owner and Owner .. "'s Sleeper" or "Sleeper") .. Suffix
+    elseif Entry.Class == "Flycopter" then
+        local Health = math.floor(tonumber(Entry.Model:GetAttribute("Health")) or 0)
+        local MaxHealth = math.floor(tonumber(Entry.Model:GetAttribute("MaxHealth")) or 0)
+        return Entry.Name .. " [" .. Health .. "/" .. MaxHealth .. "] " .. Suffix
+    elseif Entry.Class == "BTR" then
+        local Destroyed = Entry.Model:GetAttribute("Destroyed")
+
+        if Destroyed == "true" then
+            return Entry.Name .. " [DESTROYED] " .. Suffix
+        elseif Library.Flags["Show Health"] then
+            local Health = math.floor(tonumber(Entry.Model:GetAttribute("Health")) or 0)
+            local MaxHealth = math.floor(tonumber(Entry.Model:GetAttribute("MaxHealth")) or 0)
+            return Entry.Name .. " [" .. Health .. "/" .. MaxHealth .. "] " .. Suffix
+        end
+    elseif Entry.Class == "Timed" and Library.Flags["Show Remaining Time"] then
+        local Timer = Entry.Model:FindFirstChild("Timer")
+        local GuiHolder = Timer and Timer:FindFirstChild("GuiHolder")
+        local Label = GuiHolder and GuiHolder:FindFirstChild("Label")
+        local TextLabel = Label and Label:FindFirstChild("TextLabel")
+        local Remaining = TextLabel and TextLabel.Text
+
+        return Entry.Name .. (Remaining and " (" .. Remaining .. ")" or "") .. Suffix
+    end
+
+    return Entry.Name .. Suffix
+end
+
+function Module.Function.UpdateRenderCache()
+    local Flags = Library.Flags
+    local CameraPosition = Camera.Position
+
+    local GameCache = {}
     for _, Entry in Module.Stored.Game do
-        if Library.Flags["Render ".. Entry.Class] then
-            if Entry.Model and Entry.Object and Module.Function:Filter(Entry.Class, Entry.Name) then
-                local Object = Entry.Object
-                local Screen, Visible = Camera:WorldToScreenPoint(Object.Position)
+        if not Flags["Render " .. Entry.Class] then continue end
 
-                local Name
-                local Distance = vector.magnitude(Camera.Position - Object.Position)
-                if Distance <= Library.Flags[Entry.Class.. " Render"].Value then
-                    if Entry.Class == "Body Bag" then
-                        local Owner = Entry.Model:GetAttribute("OwnerName")
-                        Name = (Owner ~= nil and Owner.. "'s Body Bag" or "Body Bag").. " [".. math.floor(Distance).. "]"
-                    elseif Entry.Class == "Sleeper" then
-                        local NameTag = Entry.Model:FindFirstChild("NameTag")
-                        local Label = NameTag and NameTag:FindFirstChild("Label")
-                        local Owner = Label and Label.Text
-                        Name = (Owner and Owner.. "'s Sleeper" or "Sleeper").. " [".. math.floor(Distance).. "]"
-                    elseif Entry.Class == "Flycopter" then
-                        local Health = math.floor(tonumber(Entry.Model:GetAttribute("Health")) or 0)
-                        local MaxHealth = math.floor(tonumber(Entry.Model:GetAttribute("MaxHealth")) or 0)
+        local Object = Entry.Object
+        if not (Entry.Model and Object and Object.Parent) then continue end
+        if not Module.Function:Filter(Entry.Class, Entry.Name) then continue end
 
-                        Name = Entry.Name.. " [".. Health.. "/".. MaxHealth.. "] ".. " [".. math.floor(Distance).. "]"
-                    elseif Entry.Class == "BTR" then
-                        local Destroyed = Entry.Model:GetAttribute("Destroyed")
+        local Position = Object.Position
+        local Distance = vector.magnitude(CameraPosition - Position)
+        if Distance > Flags[Entry.Class .. " Render"].Value then continue end
 
-                        if Destroyed == "true" then
-                            Name = Entry.Name.. " [DESTROYED] ".. " [".. math.floor(Distance).. "]"
-                        elseif Library.Flags["Show Health"] then
-                            local Health = math.floor(tonumber(Entry.Model:GetAttribute("Health")) or 0)
-                            local MaxHealth = math.floor(tonumber(Entry.Model:GetAttribute("MaxHealth")) or 0)
-                            Name = Entry.Name.. " [".. Health.. "/".. MaxHealth.. "] ".. " [".. math.floor(Distance).. "]"
-                        else
-                            Name = Entry.Name.. " [".. math.floor(Distance).. "]"
-                        end
-                    elseif Entry.Class == "Timed" then
-                        if Library.Flags["Show Remaining Time"] then
-                            local Timer = Entry.Model:FindFirstChild("Timer")
-                            local GuiHolder = Timer and Timer:FindFirstChild("GuiHolder")
-                            local Label = GuiHolder and GuiHolder:FindFirstChild("Label")
-                            local TextLabel = Label and Label:FindFirstChild("TextLabel")
-                            local Remaining = TextLabel and TextLabel.Text
+        GameCache[#GameCache + 1] = {
+            Position = Position,
+            Text = Module.Function:EntryName(Entry, Distance),
+            Color = Module.Function:Color(Entry.Class, Entry.Name),
+            Alpha = Flags[Entry.Class .. " Color"].Alpha,
+        }
+    end
+    Module.Stored.RenderGame = GameCache
 
-                            Name = Entry.Name.. (Remaining and " (".. Remaining.. ")" or "").. " [".. math.floor(Distance).. "]"
-                        else
-                            Name = Entry.Name.. " [".. math.floor(Distance).. "]"
-                        end
-                    else
-                        Name = Entry.Name.. " [".. math.floor(Distance).. "]"
-                    end
+    local BaseCache = {}
+    if Flags["Render Bases"] then
+        for _, Entry in Module.Stored.Base do
+            if not Flags["Render " .. Entry.Class] then continue end
 
-                    if Visible then
-                        Draw.OutlinedText(Screen, 13, Module.Function:Color(Entry.Class, Entry.Name), Library.Flags[Entry.Class.. " Color"].Alpha, Name, true, "Pixel")
-                    end
-                end
+            local Object = Entry.Object
+            if not (Entry.Model and Object and Object.Parent) then continue end
+
+            local Position = Object.Position
+            if vector.magnitude(CameraPosition - Position) > Flags["Base Render"].Value then continue end
+
+            local Flag = Flags[Entry.Class .. " Color"]
+            local Hull
+            if Flags["Render Hull"] then
+                Hull = {
+                    Position = Position,
+                    Size = Object.Size,
+                    RightVector = Object.RightVector,
+                    UpVector = Object.UpVector,
+                    LookVector = Object.LookVector,
+                }
             end
+
+            BaseCache[#BaseCache + 1] = {
+                Position = Position,
+                Hull = Hull,
+                Text = Entry.Model.Name,
+                Color = Flag.Color,
+                Alpha = Flag.Alpha,
+            }
+        end
+    end
+    Module.Stored.RenderBase = BaseCache
+end
+
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
+
+function Module.Function.Render()
+    for _, Entry in Module.Stored.RenderGame do
+        local Screen, Visible = Camera:WorldToScreenPoint(Entry.Position)
+        if Visible then
+            DrawingImmediate.OutlinedText(Screen, 13, Entry.Color, Entry.Alpha, Entry.Text, true, Library.Font)
         end
     end
 
-    if Library.Flags["Render Bases"] then
-        for _, Entry in Module.Stored.Base do
-            if Library.Flags["Render ".. Entry.Class] and Entry.Model and Entry.Object then
-                local Object = Entry.Object
-                local Screen, Visible = Camera:WorldToScreenPoint(Object.Position)
-                local Distance = vector.magnitude(Camera.Position - Object.Position)
+    for _, Entry in Module.Stored.RenderBase do
+        local Screen, Visible = Camera:WorldToScreenPoint(Entry.Position)
+        if Visible then
+            local Position = Vector2.new(Screen.X, Screen.Y)
 
-                if Visible and Distance <= Library.Flags["Base Render"].Value then
-                    local Flag = Library.Flags[Entry.Class.. " Color"]
-                    local Position = Vector2.new(Screen.X, Screen.Y)
+            if Entry.Hull then
+                local Points = Module.Function:Hull(Entry.Hull)
+                if Points then
+                    Points[#Points + 1] = Points[1]
+                    DrawingImmediate.Polyline(Points, Entry.Color, Entry.Alpha, 2)
 
-                    if Library.Flags["Render Hull"] then
-                        local Points = Module.Function:Hull(Object)
-                        if Points then
-                            Points[#Points + 1] = Points[1]
-                            Draw.Polyline(Points, Flag.Color, Flag.Alpha, 2)
-
-                            local TopY = math.huge
-                            for _, Point in Points do
-                                if Point.Y < TopY then TopY = Point.Y end
-                            end
-                            Position = Vector2.new(Screen.X, TopY - 16)
-                        end
+                    local TopY = math.huge
+                    for _, Point in Points do
+                        if Point.Y < TopY then TopY = Point.Y end
                     end
-
-                    Draw.OutlinedText(Position, 13, Flag.Color, Flag.Alpha, Entry.Model.Name, true, "Pixel")
+                    Position = Vector2.new(Screen.X, TopY - 16)
                 end
             end
+
+            DrawingImmediate.OutlinedText(Position, 13, Entry.Color, Entry.Alpha, Entry.Text, true, Library.Font)
         end
     end
 end
@@ -855,4 +857,6 @@ Library:GroupList(1154360, {"Founder", "Co-Founder", "Lead Developer", "Game Mod
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
 task.spawn(function() while true do task.wait(1 / 4) Module.Function.Cache() end end)
-ConnectRender(Module.Function.Render)
+task.spawn(function() while true do task.wait(0.1) pcall(Module.Function.UpdateArmorViewer) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
+RunService.Render:Connect(Module.Function.Render)

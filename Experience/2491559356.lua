@@ -1,70 +1,8 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -79,6 +17,10 @@ local Module = {
     
     Stored = {
         Vehicles = {},
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderTargets = {}, -- tanks to draw and their relevant parts (every 0.25s)
+        RenderCache = {},   -- per-frame snapshot of those parts' CFrames/sizes
         --[[
         Original = {
             Penetration = setmetatable({}, { __mode = "k" }),
@@ -99,8 +41,8 @@ local Vector2New = Vector2.new
 local Vector3New = Vector3.new
 local MathMax = math.max
 local TableSort = table.sort
-local FilledTriangle = Draw.FilledTriangle
-local Polyline = Draw.Polyline
+local FilledTriangle = DrawingImmediate.FilledTriangle
+local Polyline = DrawingImmediate.Polyline
 
 local Convex = {
     Scratch = {
@@ -349,14 +291,10 @@ function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     return Size - 1
 end
 
-function Module.Function:ProjectPartCorners(Part, WriteOffset)
-    if not (Part and Part:IsA("BasePart")) then
-        return WriteOffset
-    end
-
-    local PartCFrame = Part.CFrame
+function Module.Function:ProjectPartCorners(Snapshot, WriteOffset)
+    local PartCFrame = Snapshot.CFrame
     local Position = PartCFrame.Position
-    local Size = Part.Size
+    local Size = Snapshot.Size
 
     local PositionX = Position.X
     local PositionY = Position.Y
@@ -450,12 +388,10 @@ function Module.Function:DrawOutline(Verts, Size, Color, Opacity, Thickness)
     Polyline(Verts, Color, Opacity, Thickness)
 end
 
-function Module.Function:DrawAmmoHull(Parts, Color)
+function Module.Function:DrawAmmoHull(Snapshots, Color)
     local PointCount = 0
-    for _, Part in ipairs(Parts) do
-        if Part and Part.Parent then
-            PointCount = self:ProjectPartCorners(Part, PointCount)
-        end
+    for _, Snapshot in ipairs(Snapshots) do
+        PointCount = self:ProjectPartCorners(Snapshot, PointCount)
     end
 
     if PointCount == 0 then return end
@@ -534,55 +470,119 @@ function Module.Function:GetBoundingParts(Vehicle)
     return Parts
 end
 
-function Module.Function:Render()
-    if not Library.Flags["Enabled"] then return end
-    if not (Library.Flags["Render Names"] or Library.Flags["Render Box"] or Library.Flags["Render Turret Ammo"] or Library.Flags["Render Hull Ammo"]) then return end
+-- // Render Cache \\ --
+-- Everything that touches the game (GetChildren, FindFirstChild, teams, CFrames,
+-- bounding boxes) happens here, outside RunService.Render.
 
-    for _, Tank in Module.Stored.Vehicles do
-        if not Tank or not Tank.Parent then continue end
+-- Which tanks to draw and which of their parts matter. Scanned a few times a second.
+function Module.Function.UpdateRenderTargets()
+    local Flags = Library.Flags
+    local Targets = {}
 
-        local Name = Module.Function:GetRealName(Tank)
-        local Team = Module.Function:GetPlayerTeam(Name)
-        if Team == LocalPlayer.Team.Name then continue end
+    if Flags["Enabled"] and (Flags["Render Names"] or Flags["Render Box"] or Flags["Render Turret Ammo"] or Flags["Render Hull Ammo"]) then
+        local LocalTeam = LocalPlayer.Team and LocalPlayer.Team.Name
 
-        if Library.Flags["Render Turret Ammo"] or Library.Flags["Render Hull Ammo"] then
-            local HullAmmo, TurretAmmo = Module.Function:GetAmmunition(Tank)
+        for _, Tank in Module.Stored.Vehicles do
+            if not Tank or not Tank.Parent then continue end
 
-            if Library.Flags["Render Turret Ammo"] and TurretAmmo then
-                Module.Function:DrawAmmoHull(TurretAmmo, Library.Flags["Turret Ammo Color"])
+            local Name = Module.Function:GetRealName(Tank)
+            if Module.Function:GetPlayerTeam(Name) == LocalTeam then continue end
+
+            local HullAmmo, TurretAmmo
+            if Flags["Render Turret Ammo"] or Flags["Render Hull Ammo"] then
+                HullAmmo, TurretAmmo = Module.Function:GetAmmunition(Tank)
             end
 
-            if Library.Flags["Render Hull Ammo"] and HullAmmo then
-                Module.Function:DrawAmmoHull(HullAmmo, Library.Flags["Hull Ammo Color"])
+            local BoxParts = {}
+            if Flags["Render Box"] or Flags["Render Names"] then
+                BoxParts = Module.Function:GetBoundingParts(Tank)
             end
+
+            Targets[#Targets + 1] = {
+                Tank = Tank,
+                Name = Name,
+                HullAmmo = HullAmmo,
+                TurretAmmo = TurretAmmo,
+                BoxParts = BoxParts,
+            }
+        end
+    end
+
+    Module.Stored.RenderTargets = Targets
+end
+
+local function SnapshotParts(Parts)
+    if not Parts then return nil end
+
+    local Snapshots = {}
+    for _, Part in Parts do
+        if Part and Part.Parent then
+            Snapshots[#Snapshots + 1] = { CFrame = Part.CFrame, Size = Part.Size }
+        end
+    end
+    return Snapshots
+end
+
+-- Where those parts are right now. Refreshed every tick.
+function Module.Function.UpdateRenderCache()
+    local Cache = {}
+
+    for _, Target in Module.Stored.RenderTargets do
+        if not Target.Tank.Parent then continue end
+
+        local Entry = {
+            Name = Target.Name,
+            HullAmmo = SnapshotParts(Target.HullAmmo),
+            TurretAmmo = SnapshotParts(Target.TurretAmmo),
+        }
+
+        if #Target.BoxParts > 0 then
+            Entry.BoxCFrame, Entry.BoxSize = GetBoundingBox(Target.BoxParts)
         end
 
-        if Library.Flags["Render Box"] or Library.Flags["Render Names"] then
-            local BoxParts = Module.Function:GetBoundingParts(Tank)
+        Cache[#Cache + 1] = Entry
+    end
 
-            if #BoxParts > 0 then
-                local BoxCFrame, BoxSize = GetBoundingBox(BoxParts)
-                local Position, Size = Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
+    Module.Stored.RenderCache = Cache
+end
 
-                if Position then
-                    if Library.Flags["Render Box"] then
-                    local BoxColor = Library.Flags["Box Color"].Color
-                    local BoxAlpha = Library.Flags["Box Color"].Alpha
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
 
-                    if Library.Flags["Box Outline"] then
+function Module.Function.Render()
+    local Flags = Library.Flags
+    if not Flags["Enabled"] then return end
+
+    for _, Entry in Module.Stored.RenderCache do
+        if Flags["Render Turret Ammo"] and Entry.TurretAmmo then
+            Module.Function:DrawAmmoHull(Entry.TurretAmmo, Flags["Turret Ammo Color"])
+        end
+
+        if Flags["Render Hull Ammo"] and Entry.HullAmmo then
+            Module.Function:DrawAmmoHull(Entry.HullAmmo, Flags["Hull Ammo Color"])
+        end
+
+        if Entry.BoxCFrame and (Flags["Render Box"] or Flags["Render Names"]) then
+            local Position, Size = Module.Function:WorldBoxToScreen(Entry.BoxCFrame, Entry.BoxSize)
+
+            if Position then
+                if Flags["Render Box"] then
+                    local BoxColor = Flags["Box Color"].Color
+                    local BoxAlpha = Flags["Box Color"].Alpha
+
+                    if Flags["Box Outline"] then
                         local Thickness = 1
-                        Draw.Rectangle(Vector2.new(Position.X - Thickness, Position.Y - Thickness), Vector2.new(Size.X + Thickness * 2, Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        Draw.Rectangle(Vector2.new(Position.X + Thickness, Position.Y + Thickness), Vector2.new(Size.X - Thickness * 2, Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        Draw.Rectangle(Position, Size, BoxColor, BoxAlpha, 1)
+                        DrawingImmediate.Rectangle(Vector2.new(Position.X - Thickness, Position.Y - Thickness), Vector2.new(Size.X + Thickness * 2, Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                        DrawingImmediate.Rectangle(Vector2.new(Position.X + Thickness, Position.Y + Thickness), Vector2.new(Size.X - Thickness * 2, Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                        DrawingImmediate.Rectangle(Position, Size, BoxColor, BoxAlpha, 1)
                     else
-                        Draw.Rectangle(Position, Size, BoxColor, BoxAlpha)
+                        DrawingImmediate.Rectangle(Position, Size, BoxColor, BoxAlpha)
                     end
                 end
 
-                    if Library.Flags["Render Names"] then
-                        local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
-                        Draw.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Name, true, "Verdana")
-                    end
+                if Flags["Render Names"] then
+                    local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
+                    DrawingImmediate.OutlinedText(NamePosition, 13, Flags["Name Color"].Color, Flags["Name Color"].Alpha, Entry.Name, true, Library.Font)
                 end
             end
         end
@@ -594,22 +594,21 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
-task.spawn(function()
-    while true do
-        task.wait(0.8)
-        Module.Function:Cache()
-    end
-end)
+task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
+task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRenderTargets) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
 
 --[[
-RunService.PostLocal:Connect(function()
+function Module.Function.PostLocal()
     if Library.Flags["Force Penetration"] or Library.Flags["Force Speed"] then
         local LocalHull = Module.Function:GetLocalHull()
         if LocalHull then
             Module.Function:SetValues(LocalHull)
         end
-    end 
-end)
+    end
+end
+
+RunService.PostLocal:Connect(Module.Function.PostLocal)
 ]]
 
-ConnectRender(function() Module.Function:Render() end)
+RunService.Render:Connect(Module.Function.Render)

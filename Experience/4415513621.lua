@@ -1,70 +1,8 @@
--- // Render Queue \\ --
--- RunService.Render may only be used for DrawingImmediate calls. All game work
--- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
--- in RunService.PostLocal instead. Draw calls made there through `Draw` are
--- recorded, and the Render event only replays them with DrawingImmediate.
-
-local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
-
-local Draw = setmetatable({
-    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
-    -- cached; outside Render a cached value (or a rough estimate) is returned.
-    GetTextBounds = function(Font, Size, Text)
-        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
-        local Cached = RenderQueue.Bounds[Key]
-        if Cached then return Cached end
-        RenderQueue.Measure[Key] = { Font, Size, Text }
-        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
-    end,
-}, {
-    __index = function(Self, Name)
-        local Recorder = function(...)
-            local Back = RenderQueue.Back
-            Back[#Back + 1] = { Name, table.pack(...) }
-        end
-        rawset(Self, Name, Recorder)
-        return Recorder
-    end,
-})
-
--- Registers a per-frame callback that does all non-drawing work and records draws.
-local function ConnectRender(Callback)
-    table.insert(RenderQueue.Callbacks, Callback)
-end
-
-RunService.PostLocal:Connect(function()
-    table.clear(RenderQueue.Back)
-    for _, Callback in RenderQueue.Callbacks do
-        local Ok, Err = pcall(Callback)
-        if not Ok and tick() - RenderQueue.LastError > 5 then
-            RenderQueue.LastError = tick()
-            print("[Goop] Render error: " .. tostring(Err))
-        end
-    end
-    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
-end)
-
-RunService.Render:Connect(function()
-    for _, Call in RenderQueue.Front do
-        local Args = Call[2]
-        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
-    end
-
-    for Key, Args in RenderQueue.Measure do
-        if RenderQueue.BoundsCount > 2048 then
-            table.clear(RenderQueue.Bounds)
-            RenderQueue.BoundsCount = 0
-        end
-        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
-        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
-        RenderQueue.Measure[Key] = nil
-    end
-end)
-
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -78,6 +16,10 @@ local Module = {
     
     Stored = {
         Entities = {},
+
+        -- Render cache: filled outside RunService.Render, only read inside it.
+        RenderTargets = {}, -- { Animal, RootPart, Parts, Name } (every 0.25s)
+        RenderCache = {},   -- { BoxCFrame, BoxSize, Name } (every tick)
     }
 }
 
@@ -171,45 +113,82 @@ function Module.Function:Cache()
     end
 end
 
-function Module.Function.Render()
-    for _, Animal in pairs(Module.Stored.Entities) do
-        if Animal and Animal:FindFirstChild("HumanoidRootPart") then
-            if not LocalPlayer then continue end
+-- // Render Cache \\ --
+-- Everything that touches the game (GetChildren, FindFirstChild, attributes,
+-- positions, bounding boxes) happens here, outside RunService.Render.
 
-            local Character = LocalPlayer.Character
-            if not Character then continue end
+function Module.Function.UpdateRenderTargets()
+    local Targets = {}
 
-            local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
-            if not HumanoidRootPart then continue end
-
-            if Library.Flags["Use Maximum Render"] and vector.magnitude(Animal:FindFirstChild("HumanoidRootPart").Position - HumanoidRootPart.Position) >= Library.Flags["Maximum Render"].Value then continue end
+    if Library.Flags["Render Boxes"] or Library.Flags["Render Names"] then
+        for _, Animal in pairs(Module.Stored.Entities) do
+            local RootPart = Animal and Animal:FindFirstChild("HumanoidRootPart")
+            if not RootPart then continue end
 
             local Parts, Count = Module.Function:GetEntityParts(Animal)
-
             if Count > 0 then
-                local Box, WorldSize = GetBoundingBox(Parts)
-                local BoxPosition, BoxSize = Module.Function:WorldBoxToScreen(Box, WorldSize)
-                if BoxPosition and BoxSize then
-                    local ScaledSize = Vector2.new(BoxSize.X * 2, BoxSize.Y * 2)
+                Targets[#Targets + 1] = {
+                    Animal = Animal,
+                    RootPart = RootPart,
+                    Parts = Parts,
+                    Name = Animal:GetAttribute("RealFileName"),
+                }
+            end
+        end
+    end
 
-                    local ScaledPosition = Vector2.new(BoxPosition.X - (ScaledSize.X - BoxSize.X) * 0.5, BoxPosition.Y - (ScaledSize.Y - BoxSize.Y) * 0.5)
+    Module.Stored.RenderTargets = Targets
+end
 
-                    local TopY = ScaledPosition.Y
-                    local CenterX = ScaledPosition.X + ScaledSize.X * 0.5
+function Module.Function.UpdateRenderCache()
+    local Cache = {}
 
-                    if Library.Flags["Render Boxes"] then
-                        local Thickness = 1
+    local Character = LocalPlayer and LocalPlayer.Character
+    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
 
-                        Draw.Rectangle(Vector2.new(ScaledPosition.X - Thickness, ScaledPosition.Y - Thickness), Vector2.new(ScaledSize.X + Thickness * 2, ScaledSize.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        Draw.Rectangle(Vector2.new(ScaledPosition.X + Thickness, ScaledPosition.Y + Thickness), Vector2.new(ScaledSize.X - Thickness * 2, ScaledSize.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        Draw.Rectangle(ScaledPosition, ScaledSize, Library.Flags["Box Color"].Color, Library.Flags["Box Color"].Alpha, 1)
-                    end
+    if HumanoidRootPart then
+        local UseMaximum = Library.Flags["Use Maximum Render"]
+        local Maximum = Library.Flags["Maximum Render"].Value
 
-                    if Library.Flags["Render Names"] then
-                        local RealName = Animal:GetAttribute("RealFileName")
-                        Draw.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
-                    end
-                end
+        for _, Target in Module.Stored.RenderTargets do
+            if not Target.RootPart.Parent then continue end
+            if UseMaximum and vector.magnitude(Target.RootPart.Position - HumanoidRootPart.Position) >= Maximum then continue end
+
+            local BoxCFrame, BoxSize = GetBoundingBox(Target.Parts)
+            if BoxCFrame then
+                Cache[#Cache + 1] = { BoxCFrame = BoxCFrame, BoxSize = BoxSize, Name = Target.Name }
+            end
+        end
+    end
+
+    Module.Stored.RenderCache = Cache
+end
+
+-- // Render \\ --
+-- Only iterates the render cache and draws with DrawingImmediate.
+
+function Module.Function.Render()
+    local Flags = Library.Flags
+
+    for _, Entry in Module.Stored.RenderCache do
+        local BoxPosition, BoxSize = Module.Function:WorldBoxToScreen(Entry.BoxCFrame, Entry.BoxSize)
+        if BoxPosition and BoxSize then
+            local ScaledSize = Vector2.new(BoxSize.X * 2, BoxSize.Y * 2)
+            local ScaledPosition = Vector2.new(BoxPosition.X - (ScaledSize.X - BoxSize.X) * 0.5, BoxPosition.Y - (ScaledSize.Y - BoxSize.Y) * 0.5)
+
+            local TopY = ScaledPosition.Y
+            local CenterX = ScaledPosition.X + ScaledSize.X * 0.5
+
+            if Flags["Render Boxes"] then
+                local Thickness = 1
+
+                DrawingImmediate.Rectangle(Vector2.new(ScaledPosition.X - Thickness, ScaledPosition.Y - Thickness), Vector2.new(ScaledSize.X + Thickness * 2, ScaledSize.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                DrawingImmediate.Rectangle(Vector2.new(ScaledPosition.X + Thickness, ScaledPosition.Y + Thickness), Vector2.new(ScaledSize.X - Thickness * 2, ScaledSize.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                DrawingImmediate.Rectangle(ScaledPosition, ScaledSize, Flags["Box Color"].Color, Flags["Box Color"].Alpha, 1)
+            end
+
+            if Flags["Render Names"] and Entry.Name then
+                DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Flags["Name Color"].Color, Flags["Name Color"].Alpha, Entry.Name, true, Library.Font)
             end
         end
     end
@@ -263,4 +242,6 @@ Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigW
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
 task.spawn(function() while true do task.wait(0.5) Module.Function:Cache() end end)
-ConnectRender(Module.Function.Render)
+task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRenderTargets) end end)
+task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
+RunService.Render:Connect(Module.Function.Render)
