@@ -1,3 +1,66 @@
+-- // Render Queue \\ --
+-- RunService.Render may only be used for DrawingImmediate calls. All game work
+-- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
+-- in RunService.PostLocal instead. Draw calls made there through `Draw` are
+-- recorded, and the Render event only replays them with DrawingImmediate.
+
+local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
+
+local Draw = setmetatable({
+    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
+    -- cached; outside Render a cached value (or a rough estimate) is returned.
+    GetTextBounds = function(Font, Size, Text)
+        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
+        local Cached = RenderQueue.Bounds[Key]
+        if Cached then return Cached end
+        RenderQueue.Measure[Key] = { Font, Size, Text }
+        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
+    end,
+}, {
+    __index = function(Self, Name)
+        local Recorder = function(...)
+            local Back = RenderQueue.Back
+            Back[#Back + 1] = { Name, table.pack(...) }
+        end
+        rawset(Self, Name, Recorder)
+        return Recorder
+    end,
+})
+
+-- Registers a per-frame callback that does all non-drawing work and records draws.
+local function ConnectRender(Callback)
+    table.insert(RenderQueue.Callbacks, Callback)
+end
+
+RunService.PostLocal:Connect(function()
+    table.clear(RenderQueue.Back)
+    for _, Callback in RenderQueue.Callbacks do
+        local Ok, Err = pcall(Callback)
+        if not Ok and tick() - RenderQueue.LastError > 5 then
+            RenderQueue.LastError = tick()
+            print("[Goop] Render error: " .. tostring(Err))
+        end
+    end
+    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
+end)
+
+RunService.Render:Connect(function()
+    for _, Call in RenderQueue.Front do
+        local Args = Call[2]
+        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
+    end
+
+    for Key, Args in RenderQueue.Measure do
+        if RenderQueue.BoundsCount > 2048 then
+            table.clear(RenderQueue.Bounds)
+            RenderQueue.BoundsCount = 0
+        end
+        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
+        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
+        RenderQueue.Measure[Key] = nil
+    end
+end)
+
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
@@ -36,8 +99,8 @@ local Vector2New = Vector2.new
 local Vector3New = Vector3.new
 local MathMax = math.max
 local TableSort = table.sort
-local FilledTriangle = DrawingImmediate.FilledTriangle
-local Polyline = DrawingImmediate.Polyline
+local FilledTriangle = Draw.FilledTriangle
+local Polyline = Draw.Polyline
 
 local Convex = {
     Scratch = {
@@ -508,17 +571,17 @@ function Module.Function:Render()
 
                     if Library.Flags["Box Outline"] then
                         local Thickness = 1
-                        DrawingImmediate.Rectangle(Vector2.new(Position.X - Thickness, Position.Y - Thickness), Vector2.new(Size.X + Thickness * 2, Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        DrawingImmediate.Rectangle(Vector2.new(Position.X + Thickness, Position.Y + Thickness), Vector2.new(Size.X - Thickness * 2, Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                        DrawingImmediate.Rectangle(Position, Size, BoxColor, BoxAlpha, 1)
+                        Draw.Rectangle(Vector2.new(Position.X - Thickness, Position.Y - Thickness), Vector2.new(Size.X + Thickness * 2, Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                        Draw.Rectangle(Vector2.new(Position.X + Thickness, Position.Y + Thickness), Vector2.new(Size.X - Thickness * 2, Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
+                        Draw.Rectangle(Position, Size, BoxColor, BoxAlpha, 1)
                     else
-                        DrawingImmediate.Rectangle(Position, Size, BoxColor, BoxAlpha)
+                        Draw.Rectangle(Position, Size, BoxColor, BoxAlpha)
                     end
                 end
 
                     if Library.Flags["Render Names"] then
                         local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
-                        DrawingImmediate.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Name, true, "Verdana")
+                        Draw.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Name, true, "Verdana")
                     end
                 end
             end
@@ -549,4 +612,4 @@ RunService.PostLocal:Connect(function()
 end)
 ]]
 
-RunService.Render:Connect(function() Module.Function:Render() end)
+ConnectRender(function() Module.Function:Render() end)

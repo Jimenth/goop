@@ -1,3 +1,66 @@
+-- // Render Queue \\ --
+-- RunService.Render may only be used for DrawingImmediate calls. All game work
+-- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
+-- in RunService.PostLocal instead. Draw calls made there through `Draw` are
+-- recorded, and the Render event only replays them with DrawingImmediate.
+
+local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
+
+local Draw = setmetatable({
+    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
+    -- cached; outside Render a cached value (or a rough estimate) is returned.
+    GetTextBounds = function(Font, Size, Text)
+        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
+        local Cached = RenderQueue.Bounds[Key]
+        if Cached then return Cached end
+        RenderQueue.Measure[Key] = { Font, Size, Text }
+        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
+    end,
+}, {
+    __index = function(Self, Name)
+        local Recorder = function(...)
+            local Back = RenderQueue.Back
+            Back[#Back + 1] = { Name, table.pack(...) }
+        end
+        rawset(Self, Name, Recorder)
+        return Recorder
+    end,
+})
+
+-- Registers a per-frame callback that does all non-drawing work and records draws.
+local function ConnectRender(Callback)
+    table.insert(RenderQueue.Callbacks, Callback)
+end
+
+RunService.PostLocal:Connect(function()
+    table.clear(RenderQueue.Back)
+    for _, Callback in RenderQueue.Callbacks do
+        local Ok, Err = pcall(Callback)
+        if not Ok and tick() - RenderQueue.LastError > 5 then
+            RenderQueue.LastError = tick()
+            print("[Goop] Render error: " .. tostring(Err))
+        end
+    end
+    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
+end)
+
+RunService.Render:Connect(function()
+    for _, Call in RenderQueue.Front do
+        local Args = Call[2]
+        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
+    end
+
+    for Key, Args in RenderQueue.Measure do
+        if RenderQueue.BoundsCount > 2048 then
+            table.clear(RenderQueue.Bounds)
+            RenderQueue.BoundsCount = 0
+        end
+        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
+        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
+        RenderQueue.Measure[Key] = nil
+    end
+end)
+
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
@@ -138,7 +201,7 @@ function Module.Function:Render()
     if Library.Flags["Render Gun"] and Module.Stored.Gun then
         local Screen, OnScreen = Camera:WorldToScreenPoint(Module.Stored.Gun.Position)
         if OnScreen then
-            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Verdana")
+            Draw.OutlinedText(Screen, 13, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Verdana")
         end
     end
 
@@ -155,7 +218,7 @@ function Module.Function:Render()
                     if OnScreen then
                         local CenterX = (MinX + MaxX) / 2
                         local BottomY = MaxY + 1
-                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 13, Color, Alpha, Role, true, "Verdana")
+                        Draw.OutlinedText(Vector2.new(CenterX, BottomY), 13, Color, Alpha, Role, true, "Verdana")
                     end
                 end
             end
@@ -281,6 +344,4 @@ ExploitsSection:Button({ Name = "Teleport To Gun", Callback = function() Module.
 
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
-game:GetService("RunService").Render:Connect(function()
-    Module.Function:Render()
-end)
+ConnectRender(Module.Function.Render)

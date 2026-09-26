@@ -50,8 +50,8 @@ EntitiesSection:Toggle({Name = "Render Citizens", Flag = "Render Citizens", Defa
                 table.remove(Module.Paths, Index)
             end
 
-            for Key, Model in pairs(Module.Stored.Entities) do
-                if Model then
+            for Key, Entry in Module.Stored.Entities do
+                if Entry then
                     remove_model_data(Key)
                     Module.Stored.Entities[Key] = nil
                 end
@@ -59,6 +59,10 @@ EntitiesSection:Toggle({Name = "Render Citizens", Flag = "Render Citizens", Defa
         end
     end
 })
+
+EntitiesSection:Toggle({Name = "Target Citizens", Flag = "Target Citizens", Default = false, Callback = function(Value) end })
+
+EntitiesSection:Separator()
 
 EntitiesSection:Toggle({Name = "Render Police", Flag = "Render Police", Default = false,
     Callback = function(Value)
@@ -72,8 +76,8 @@ EntitiesSection:Toggle({Name = "Render Police", Flag = "Render Police", Default 
                 table.remove(Module.Paths, Index)
             end
 
-            for Key, Model in pairs(Module.Stored.Entities) do
-                if Model then
+            for Key, Entry in Module.Stored.Entities do
+                if Entry then
                     remove_model_data(Key)
                     Module.Stored.Entities[Key] = nil
                 end
@@ -81,6 +85,8 @@ EntitiesSection:Toggle({Name = "Render Police", Flag = "Render Police", Default 
         end
     end
 })
+
+EntitiesSection:Toggle({Name = "Target Police", Flag = "Target Police", Default = true, Callback = function(Value) end })
 
 -- // Weapon Section \\ --
 
@@ -98,31 +104,12 @@ function Module.Function:GetEntityParts(Model)
 	if not Model then return nil end
 
 	return {
-		Head = Model:FindFirstChild("Head"),
-		UpperTorso = Model:FindFirstChild("UpperTorso"),
-		LowerTorso = Model:FindFirstChild("LowerTorso"),
-		
-		LeftUpperArm = Model:FindFirstChild("LeftUpperArm"),
-		LeftLowerArm = Model:FindFirstChild("LeftLowerArm"),
-		LeftHand = Model:FindFirstChild("LeftHand"),
-		
-		RightUpperArm = Model:FindFirstChild("RightUpperArm"),
-		RightLowerArm = Model:FindFirstChild("RightLowerArm"),
-		RightHand = Model:FindFirstChild("RightHand"),
-		
-		LeftUpperLeg = Model:FindFirstChild("LeftUpperLeg"),
-		LeftLowerLeg = Model:FindFirstChild("LeftLowerLeg"),
-		LeftFoot = Model:FindFirstChild("LeftFoot"),
-		
-		RightUpperLeg = Model:FindFirstChild("RightUpperLeg"),
-		RightLowerLeg = Model:FindFirstChild("RightLowerLeg"),
-		RightFoot = Model:FindFirstChild("RightFoot"),
-		
-		LeftLeg = Model:FindFirstChild("Left Leg"),
-		RightLeg = Model:FindFirstChild("Right Leg"),
-		LeftArm = Model:FindFirstChild("Left Arm"),
-		RightArm = Model:FindFirstChild("Right Arm"),
-		Torso = Model:FindFirstChild("Torso"),
+        Head = Model:FindFirstChild("Head") or Model:FindFirstChild("HumanoidRootPart"),
+		LeftLeg = Model:FindFirstChild("Left Leg") or Model:FindFirstChild("HumanoidRootPart"),
+		RightLeg = Model:FindFirstChild("Right Leg") or Model:FindFirstChild("HumanoidRootPart"),
+		LeftArm = Model:FindFirstChild("Left Arm") or Model:FindFirstChild("HumanoidRootPart"),
+		RightArm = Model:FindFirstChild("Right Arm") or Model:FindFirstChild("HumanoidRootPart"),
+		Torso = Model:FindFirstChild("Torso") or Model:FindFirstChild("HumanoidRootPart"),
 		
 		HumanoidRootPart = Model:FindFirstChild("HumanoidRootPart"),
 	}
@@ -140,6 +127,16 @@ function Module.Function:Validated(Model)
 	return true
 end
 
+function Module.Function:ShouldTarget(Model)
+    if Model.Parent == Module.Game.Citizens and not Library.Flags["Target Citizens"] then
+        return true
+    elseif Model.Parent == Module.Game.Police and not Library.Flags["Target Police"] then
+        return true
+    end
+
+    return false
+end
+
 function Module.Function:GetEntityData(Model, Parts)
 	if not Model or not Parts then return nil, nil end
 
@@ -155,30 +152,30 @@ function Module.Function:GetEntityData(Model, Parts)
 		PrimaryPart = Model.PrimaryPart or Parts.HumanoidRootPart,
 		Humanoid = Humanoid or Model.PrimaryPart,
 		Head = Parts.Head,
-		Torso = Parts.Torso or Parts.UpperTorso,
-		UpperTorso = Parts.UpperTorso,
-		LowerTorso = Parts.LowerTorso,
-		LeftArm = Parts.LeftArm or Parts.LeftUpperArm,
-		LeftLeg = Parts.LeftLeg or Parts.LeftUpperLeg,
-		RightArm = Parts.RightArm or Parts.RightUpperArm,
-		RightLeg = Parts.RightLeg or Parts.RightUpperLeg,
-		LeftUpperArm = Parts.LeftUpperArm,
-		LeftLowerArm = Parts.LeftLowerArm,
-		LeftHand = Parts.LeftHand,
-		RightUpperArm = Parts.RightUpperArm,
-		RightLowerArm = Parts.RightLowerArm,
-		RightHand = Parts.RightHand,
-		LeftUpperLeg = Parts.LeftUpperLeg,
-		LeftLowerLeg = Parts.LeftLowerLeg,
-		LeftFoot = Parts.LeftFoot,
-		RightUpperLeg = Parts.RightUpperLeg,
-		RightLowerLeg = Parts.RightLowerLeg,
-		RightFoot = Parts.RightFoot,
+		Torso = Parts.Torso,
+		UpperTorso = Parts.Torso,
+		LowerTorso = Parts.Torso,
+		LeftArm = Parts.LeftArm,
+		LeftLeg = Parts.LeftLeg,
+		RightArm = Parts.RightArm,
+		RightLeg = Parts.RightLeg,
+		LeftUpperArm = Parts.LeftArm,
+		LeftLowerArm = Parts.LeftArm,
+		LeftHand = Parts.LeftArm,
+		RightUpperArm = Parts.RightArm,
+		RightLowerArm = Parts.RightArm,
+		RightHand = Parts.RightArm,
+		LeftUpperLeg = Parts.LeftLeg,
+		LeftLowerLeg = Parts.LeftLeg,
+		LeftFoot = Parts.LeftLeg,
+		RightUpperLeg = Parts.RightLeg,
+		RightLowerLeg = Parts.RightLeg,
+		RightFoot = Parts.RightLeg,
 		BodyHeightScale = 1,
 		RigType = 0,
 		Toolname = "Unknown",
 		Teamname = Model.Name,
-		Whitelisted = false,
+		Whitelisted = Module.Function:ShouldTarget(Model),
 		Archenemies = false,
 		Aimbot_Part = Parts.Head,
 		Aimbot_TP_Part = Parts.Head,
@@ -186,33 +183,33 @@ function Module.Function:GetEntityData(Model, Parts)
 		Health = Health,
 		MaxHealth = MaxHealth,
 		body_parts_data = {
-			{ name = "LowerTorso", part = Parts.LowerTorso },
-			{ name = "LeftUpperLeg", part = Parts.LeftUpperLeg },
-			{ name = "LeftLowerLeg", part = Parts.LeftLowerLeg },
-			{ name = "RightUpperLeg", part = Parts.RightUpperLeg },
-			{ name = "RightLowerLeg", part = Parts.RightLowerLeg },
-			{ name = "LeftUpperArm", part = Parts.LeftUpperArm },
-			{ name = "LeftLowerArm", part = Parts.LeftLowerArm },
-			{ name = "RightUpperArm", part = Parts.RightUpperArm },
-			{ name = "RightLowerArm", part = Parts.RightLowerArm },
+			{ name = "LowerTorso", part = Parts.Torso },
+			{ name = "LeftUpperLeg", part = Parts.LeftLeg },
+			{ name = "LeftLowerLeg", part = Parts.LeftLeg },
+			{ name = "RightUpperLeg", part = Parts.RightLeg },
+			{ name = "RightLowerLeg", part = Parts.RightLeg },
+			{ name = "LeftUpperArm", part = Parts.LeftArm },
+			{ name = "LeftLowerArm", part = Parts.LeftArm },
+			{ name = "RightUpperArm", part = Parts.RightArm },
+			{ name = "RightLowerArm", part = Parts.RightArm },
 		},
 		full_body_data = {
 			{ name = "Head", part = Parts.Head },
-			{ name = "UpperTorso", part = Parts.UpperTorso },
-			{ name = "LowerTorso", part = Parts.LowerTorso },
+			{ name = "UpperTorso", part = Parts.Torso },
+			{ name = "LowerTorso", part = Parts.Torso },
 			{ name = "HumanoidRootPart", part = Parts.HumanoidRootPart },
-			{ name = "LeftUpperArm", part = Parts.LeftUpperArm },
-			{ name = "LeftLowerArm", part = Parts.LeftLowerArm },
-			{ name = "LeftHand", part = Parts.LeftHand },
-			{ name = "RightUpperArm", part = Parts.RightUpperArm },
-			{ name = "RightLowerArm", part = Parts.RightLowerArm },
-			{ name = "RightHand", part = Parts.RightHand },
-			{ name = "LeftUpperLeg", part = Parts.LeftUpperLeg },
-			{ name = "LeftLowerLeg", part = Parts.LeftLowerLeg },
-			{ name = "LeftFoot", part = Parts.LeftFoot },
-			{ name = "RightUpperLeg", part = Parts.RightUpperLeg },
-			{ name = "RightLowerLeg", part = Parts.RightLowerLeg },
-			{ name = "RightFoot", part = Parts.RightFoot },
+			{ name = "LeftUpperArm", part = Parts.LeftArm },
+			{ name = "LeftLowerArm", part = Parts.LeftArm },
+			{ name = "LeftHand", part = Parts.LeftArm },
+			{ name = "RightUpperArm", part = Parts.RightArm },
+			{ name = "RightLowerArm", part = Parts.RightArm },
+			{ name = "RightHand", part = Parts.RightArm },
+			{ name = "LeftUpperLeg", part = Parts.LeftLeg },
+			{ name = "LeftLowerLeg", part = Parts.LeftLeg },
+			{ name = "LeftFoot", part = Parts.LeftLeg },
+			{ name = "RightUpperLeg", part = Parts.RightLeg },
+			{ name = "RightLowerLeg", part = Parts.RightLeg },
+			{ name = "RightFoot", part = Parts.RightLeg },
 		}
 	}
 
@@ -220,13 +217,24 @@ function Module.Function:GetEntityData(Model, Parts)
 end
 
 function Module.Function:ScanEntities(Table)
-    for _, Path in ipairs(Module.Paths) do
-        for _, Entity in ipairs(Path:GetChildren()) do
+    for _, Path in Module.Paths do
+        for _, Entity in Path:GetChildren() do
             if not Entity or Entity.ClassName ~= "Model" or Entity == LocalPlayer.Character then continue end
-            if not Module.Function:Validated(Entity) then continue end
+
+            local Key = tostring(Entity)
+            local Cached = Module.Stored.Entities[Key]
+
+            if Cached then
+                if Cached.Humanoid then
+                    edit_model_data({ Health = Cached.Humanoid.Health }, Key)
+                    edit_model_data({ Whitelisted = Module.Function:ShouldTarget(Entity) }, Key)
+                end
+                Table[Key] = true
+                continue
+            end
 
             local Invalid = false
-            for _, Player in ipairs(Players:GetChildren()) do
+            for _, Player in Players:GetChildren() do
                 if Player.Character == Entity then
                     Invalid = true
                     break
@@ -234,24 +242,19 @@ function Module.Function:ScanEntities(Table)
             end
             if Invalid then continue end
 
-            local Key = tostring(Entity)
-            local Parts = Module.Function:GetEntityParts(Entity)
+            local Humanoid = Entity:FindFirstChildOfClass("Humanoid")
+            if not Humanoid then continue end
 
+            local Parts = Module.Function:GetEntityParts(Entity)
             if not Parts or not Parts.HumanoidRootPart then continue end
 
-            local Humanoid = Entity:FindFirstChildOfClass("Humanoid")
-
-            if not Module.Stored.Entities[Key] then
-                local ID, Data = Module.Function:GetEntityData(Entity, Parts)
-                if ID and Data then
-                    if add_model_data(Data, ID) then
-                        Module.Stored.Entities[ID] = Entity
-                    end
-                end
-            else
-                if Humanoid then
-                    edit_model_data({ Health = Humanoid.Health }, Key)
-                end
+            local ID, Data = Module.Function:GetEntityData(Entity, Parts)
+            if ID and Data and add_model_data(Data, ID) then
+                Module.Stored.Entities[ID] = {
+                    Model = Entity,
+                    Parts = Parts,
+                    Humanoid = Humanoid,
+                }
             end
 
             Table[Key] = true
@@ -265,19 +268,11 @@ task.spawn(function()
 
         local Seen = {}
 
-        for Key, Model in pairs(Module.Stored.Entities) do
-            if not Model or not Model.Parent then
+        for Key, Entry in Module.Stored.Entities do
+            local Model = Entry.Model
+            if not Model or not Model.Parent or not Model:FindFirstChild("HumanoidRootPart") then
                 remove_model_data(Key)
                 Module.Stored.Entities[Key] = nil
-                continue
-            end
-
-            if not Seen[Key] then
-                local HumanoidRootPart = Model:FindFirstChild("HumanoidRootPart")
-                if not HumanoidRootPart then
-                    remove_model_data(Key)
-                    Module.Stored.Entities[Key] = nil
-                end
             end
         end
 

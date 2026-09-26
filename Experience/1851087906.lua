@@ -1,3 +1,66 @@
+-- // Render Queue \\ --
+-- RunService.Render may only be used for DrawingImmediate calls. All game work
+-- (GetChildren, FindFirstChild, WorldToScreenPoint, attributes, flags, ...) runs
+-- in RunService.PostLocal instead. Draw calls made there through `Draw` are
+-- recorded, and the Render event only replays them with DrawingImmediate.
+
+local RenderQueue = { Front = {}, Back = {}, Bounds = {}, BoundsCount = 0, Measure = {}, Callbacks = {}, LastError = 0 }
+
+local Draw = setmetatable({
+    -- Text measurement is a DrawingImmediate call too, so it's done in Render and
+    -- cached; outside Render a cached value (or a rough estimate) is returned.
+    GetTextBounds = function(Font, Size, Text)
+        local Key = tostring(Font) .. "\0" .. tostring(Size) .. "\0" .. tostring(Text)
+        local Cached = RenderQueue.Bounds[Key]
+        if Cached then return Cached end
+        RenderQueue.Measure[Key] = { Font, Size, Text }
+        return Vector2.new(#tostring(Text) * Size * 0.5, Size)
+    end,
+}, {
+    __index = function(Self, Name)
+        local Recorder = function(...)
+            local Back = RenderQueue.Back
+            Back[#Back + 1] = { Name, table.pack(...) }
+        end
+        rawset(Self, Name, Recorder)
+        return Recorder
+    end,
+})
+
+-- Registers a per-frame callback that does all non-drawing work and records draws.
+local function ConnectRender(Callback)
+    table.insert(RenderQueue.Callbacks, Callback)
+end
+
+RunService.PostLocal:Connect(function()
+    table.clear(RenderQueue.Back)
+    for _, Callback in RenderQueue.Callbacks do
+        local Ok, Err = pcall(Callback)
+        if not Ok and tick() - RenderQueue.LastError > 5 then
+            RenderQueue.LastError = tick()
+            print("[Goop] Render error: " .. tostring(Err))
+        end
+    end
+    RenderQueue.Front, RenderQueue.Back = RenderQueue.Back, RenderQueue.Front
+end)
+
+RunService.Render:Connect(function()
+    for _, Call in RenderQueue.Front do
+        local Args = Call[2]
+        DrawingImmediate[Call[1]](table.unpack(Args, 1, Args.n))
+    end
+
+    for Key, Args in RenderQueue.Measure do
+        if RenderQueue.BoundsCount > 2048 then
+            table.clear(RenderQueue.Bounds)
+            RenderQueue.BoundsCount = 0
+        end
+        RenderQueue.Bounds[Key] = DrawingImmediate.GetTextBounds(Args[1], Args[2], Args[3])
+        RenderQueue.BoundsCount = RenderQueue.BoundsCount + 1
+        RenderQueue.Measure[Key] = nil
+    end
+end)
+
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
@@ -36,20 +99,6 @@ AnimalsSection:Separator()
 AnimalsSection:Toggle({Name = "Render Dead", Flag = "Render Dead", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Name", Flag = "Name Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
 
 -- // Functions \\ --
-
-function Module.Function:GetEntityParts(Entity)
-    local Parts = {}
-    local Count = 0
-    
-    for _, Child in Entity:GetChildren() do
-        if Child:IsA("Part") or Child:IsA("MeshPart") then
-            Count = Count + 1
-            Parts[Count] = Child
-        end
-    end
-    
-    return Parts, Count
-end
 
 function Module.Function.Cache()
     local Stored = Module.Stored.Entities
@@ -185,7 +234,7 @@ function Module.Function.Render()
                 local Screen, OnScreen = Camera:WorldToScreenPoint(HumanoidRootPart.Position)
 
                 if OnScreen then
-                    DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
+                    Draw.OutlinedText(Screen, 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Proggy")
                 end
             end            
         end
@@ -237,4 +286,4 @@ Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
 RunService.PostLocal:Connect(Module.Function.PostLocal)
-RunService.Render:Connect(Module.Function.Render)
+ConnectRender(Module.Function.Render)
