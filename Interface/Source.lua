@@ -3212,6 +3212,14 @@ local Library do
                     end
                 end
 
+                -- Block game input while the interface is visible. Only called
+                -- when the state changes, not every frame.
+                local Blocked = Library.MasterVisible == true
+                if Blocked ~= Library.WindowBlocked then
+                    Library.WindowBlocked = Blocked
+                    block_roblox_window(Blocked)
+                end
+
                 SweepScopes()
             end)
 
@@ -3348,6 +3356,11 @@ local Library do
 
     function Library:Unload()
         Library.Unloaded = true
+
+        if Library.WindowBlocked then
+            Library.WindowBlocked = false
+            pcall(block_roblox_window, false)
+        end
         Library.DrawingLoopRunning = false
 
         for _, Scope in ScopeList do
