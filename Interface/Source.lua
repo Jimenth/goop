@@ -203,11 +203,20 @@ local Library do
     LoadIcons()
 
     -- // Core \\ --
-    local OutlineColor = Vector3.new(0, 0, 0)
+    -- Retained drawings are only used for things DrawingImmediate can't draw
+    -- (the navigation bar icons). They are created in the allocation loop,
+    -- never inside the Render event.
     local PropCache = setmetatable({ }, { __mode = "k" })
 
+    local Constructors = {
+        Square = Square,
+        Text = Text,
+        Image = Image,
+    }
+
     local function NewDrawing(Type, Properties)
-        local Object = Drawing.new(Type)
+        local Class = Constructors[Type]
+        local Object = Class and Class.new() or Drawing.new(Type)
         local Cache = { }
         PropCache[Object] = Cache
         if Properties then
@@ -233,108 +242,69 @@ local Library do
         end
     end
 
-    local Pool = {
-        Squares = { }, SquareCount = 0,
-        Texts = { }, TextCount = 0,
-        Images = { }, ImageCount = 0,
-        Order = 0,
-        -- Highest counts requested by the render pass; the allocation loop
-        -- creates Drawing objects until each pool can satisfy these.
-        SquareDemand = 128, TextDemand = 64, ImageDemand = 8,
-    }
+    -- // Immediate Rendering \\ --
+    -- Every DrawingImmediate call must happen inside RunService.Render.
+    -- InRender is set by the Render handler; helpers do nothing outside it.
 
-    function Pool:Begin()
-        self.SquareCount = 0
-        self.TextCount = 0
-        self.ImageCount = 0
-        self.Order = 0
-    end
+    local Immediate = DrawingImmediate
+    local VectorCreate = vector.create
+    local function VectorNew(X, Y, Z) return VectorCreate(X, Y, Z or 0) end
+    local InRender = false
 
-    function Pool:Finish()
-        if self.SquareCount > self.SquareDemand then self.SquareDemand = self.SquareCount end
-        if self.TextCount > self.TextDemand then self.TextDemand = self.TextCount end
-        if self.ImageCount > self.ImageDemand then self.ImageDemand = self.ImageCount end
+    -- DrawingImmediate takes `vector | { r, g, b }` colors; convert Color3s once.
+    local ColorCache = setmetatable({ }, { __mode = "k" })
 
-        for Index = self.SquareCount + 1, #self.Squares do
-            UpdateDrawing(self.Squares[Index], { Visible = false })
+    local function ToColor(Color)
+        if type(Color) ~= "userdata" and type(Color) ~= "table" then
+            return Color
         end
-        for Index = self.TextCount + 1, #self.Texts do
-            UpdateDrawing(self.Texts[Index], { Visible = false })
+        local Cached = ColorCache[Color]
+        if Cached then return Cached end
+        local Converted = Color
+        local Ok, R = pcall(function() return Color.R end)
+        if Ok and type(R) == "number" then
+            Converted = VectorNew(Color.R, Color.G, Color.B)
         end
-        for Index = self.ImageCount + 1, #self.Images do
-            UpdateDrawing(self.Images[Index], { Visible = false })
-        end
+        ColorCache[Color] = Converted
+        return Converted
     end
 
     -- // Draw Helpers \\ --
 
     local function DrawRect(X, Y, W, H, Color, Opacity)
-        Pool.Order = Pool.Order + 1
-        local Index = Pool.SquareCount + 1
-        Pool.SquareCount = Index
-
-        local Square = Pool.Squares[Index]
-        if not Square then return end -- allocated by the Drawing loop
-
-        UpdateDrawing(Square, {
-            Visible = true,
-            Position = Vector2New(X, Y),
-            Size = Vector2New(W, H),
-            Color = Color,
-            Opacity = Opacity or 1,
-            ZIndex = Pool.Order,
-        })
+        if not InRender then return end
+        Immediate.FilledRectangle(VectorNew(X, Y), VectorNew(W, H), ToColor(Color), Opacity or 1, 0)
     end
 
     local function DrawText(X, Y, Size, Color, Text, Opacity, Center)
-        Pool.Order = Pool.Order + 1
-        local Index = Pool.TextCount + 1
-        Pool.TextCount = Index
-
-        local Object = Pool.Texts[Index]
-        if not Object then return end -- allocated by the Drawing loop
-
-        UpdateDrawing(Object, {
-            Visible = true,
-            Position = Vector2New(X, Y),
-            Size = Size,
-            Color = Color,
-            Text = Text,
-            Center = Center or false,
-            Opacity = Opacity or 1,
-            Font = Library.Font,
-            ZIndex = Pool.Order,
-        })
+        if not InRender then return end
+        Immediate.OutlinedText(VectorNew(X, Y), Size, ToColor(Color), Opacity or 1, tostring(Text), Center or false, Library.Font)
     end
 
-    local MeasureText = NewDrawing("Text", { Visible = false })
+    -- Text measurement is cached per font/size/text. Outside Render it only
+    -- returns cached values (or an estimate), so no DrawingImmediate call
+    -- ever happens outside the Render event.
+    local BoundsCache = { }
+    local BoundsCacheSize = 0
 
     local function GetTextBounds(Text, Size)
-        UpdateDrawing(MeasureText, {
-            Text = tostring(Text),
-            Size = Size or Library.FontSize,
-            Font = Library.Font,
-        })
-        return MeasureText.TextBounds
-    end
+        Text = tostring(Text)
+        Size = Size or Library.FontSize
+        local Key = Library.Font .. "\0" .. Size .. "\0" .. Text
+        local Cached = BoundsCache[Key]
+        if Cached then return Cached end
 
-    local function DrawImage(X, Y, W, H, Data, Color, Opacity, ForcedZ)
-        Pool.Order = Pool.Order + 1
-        local Index = Pool.ImageCount + 1
-        Pool.ImageCount = Index
+        if not InRender then
+            return VectorNew(#Text * Size * 0.5, Size, 0)
+        end
 
-        local Object = Pool.Images[Index]
-        if not Object then return end -- allocated by the Drawing loop
-
-        UpdateDrawing(Object, {
-            Visible = true,
-            Position = Vector2New(X, Y),
-            Size = Vector2New(W, H),
-            Data = Data,
-            Color = Color or Theme["White"],
-            Opacity = Opacity or 1,
-            ZIndex = ForcedZ or Pool.Order,
-        })
+        local Bounds = Immediate.GetTextBounds(Library.Font, Size, Text)
+        if BoundsCacheSize > 4096 then
+            BoundsCache, BoundsCacheSize = { }, 0
+        end
+        BoundsCache[Key] = Bounds
+        BoundsCacheSize = BoundsCacheSize + 1
+        return Bounds
     end
 
     local function DrawBox(X, Y, W, H, Outer, Border, Fill)
@@ -2947,22 +2917,12 @@ local Library do
     Library.SnapGuides = nil
 
     -- // Drawing Allocation Loop \\ --
-    -- All Drawing.new calls happen here, never inside the Render event.
-    -- The render pass only reuses pooled objects and reports how many it needed.
+    -- DrawingImmediate has no image primitive, so the navigation bar icons stay
+    -- retained Image drawings. They are created here, never inside Render.
 
     Library.DrawingLoopRunning = true
 
     local function AllocateDrawings()
-        while #Pool.Squares < Pool.SquareDemand do
-            Pool.Squares[#Pool.Squares + 1] = NewDrawing("Square", { Filled = true, Thickness = 1, Visible = false })
-        end
-        while #Pool.Texts < Pool.TextDemand do
-            Pool.Texts[#Pool.Texts + 1] = NewDrawing("Text", { Outline = true, OutlineColor = OutlineColor, Visible = false })
-        end
-        while #Pool.Images < Pool.ImageDemand do
-            Pool.Images[#Pool.Images + 1] = NewDrawing("Image", { Visible = false })
-        end
-
         local NB = Library.NavigationBarData
         if NB and NB.Buttons then
             for _, Btn in NB.Buttons do
@@ -2982,7 +2942,7 @@ local Library do
         end
     end)
 
-    local RenderConnection = RunService.Render:Connect(function()
+    local function RenderFrame()
         Library:UpdateInput()
         Library.Input.Consumed = false
         Library.DropdownOverlay = nil
@@ -2990,8 +2950,6 @@ local Library do
 
         local MainWin = Library.Windows[1]
         if not MainWin then return end
-
-        Pool:Begin()
 
         local MenuKey = MainWin.MenuToggleKey or "RightShift"
         local PressedKeys = getpressedkeys() or { }
@@ -3089,21 +3047,27 @@ local Library do
             end
         end
 
-        Pool:Finish()
+    end
+
+    Library.Unloaded = false
+
+    local RenderConnection = RunService.Render:Connect(function()
+        if Library.Unloaded then return end
+        InRender = true
+        local Ok, Err = pcall(RenderFrame)
+        InRender = false
+        if not Ok then
+            print("[Interface] Render error: " .. tostring(Err))
+        end
     end)
 
     function Library:Unload()
+        Library.Unloaded = true
         Library.DrawingLoopRunning = false
         if RenderConnection then
             RenderConnection:Disconnect()
             RenderConnection = nil
         end
-        for _, Square in Pool.Squares do Square:Remove() end
-        for _, Object in Pool.Texts do Object:Remove() end
-        for _, Image in Pool.Images do Image:Remove() end
-        Pool.Squares, Pool.SquareCount = { }, 0
-        Pool.Texts, Pool.TextCount = { }, 0
-        Pool.Images, Pool.ImageCount = { }, 0
 
         if Library.NavigationBarData and Library.NavigationBarData.Buttons then
             for _, Btn in ipairs(Library.NavigationBarData.Buttons) do
