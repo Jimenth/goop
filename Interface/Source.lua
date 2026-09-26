@@ -3191,7 +3191,21 @@ local Library do
                     local PressedKeys = getpressedkeys() or { }
                     local MenuKeyDown = TableFind(PressedKeys, MenuKey) ~= nil
 
-                    if MenuKeyDown and not Library.MasterPrevState then
+                    -- Debounced toggle: getpressedkeys can drop the key for a frame
+                    -- (and blocking/unblocking the window can cause that too), which
+                    -- used to read as release + press and toggle straight back. The
+                    -- key must be seen released for several frames in a row, and
+                    -- toggles are at least 0.25s apart.
+                    local Now = tick()
+
+                    if MenuKeyDown then
+                        Library.MasterReleaseFrames = 0
+                    else
+                        Library.MasterReleaseFrames = (Library.MasterReleaseFrames or 0) + 1
+                    end
+
+                    if MenuKeyDown and not Library.MasterPrevState and Now - (Library.MasterLastToggle or 0) >= 0.25 then
+                        Library.MasterLastToggle = Now
                         if Library.MasterVisible then
                             Library.MasterSavedStates = { }
                             for _, Window in Library.Windows do
@@ -3207,7 +3221,7 @@ local Library do
                         end
                         Library.MasterPrevState = true
                         Library.Input.FocusedTextbox = nil
-                    elseif not MenuKeyDown then
+                    elseif not MenuKeyDown and Library.MasterReleaseFrames >= 3 then
                         Library.MasterPrevState = false
                     end
                 end
