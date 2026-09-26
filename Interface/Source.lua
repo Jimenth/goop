@@ -157,7 +157,7 @@ local Library do
             local TTFPath = Library.Folders.Fonts .. "/" .. Name .. ".bin"
 
             if not fs.file(TTFPath) then
-                local Body = http.get({ url = Url })
+                local Body = http.get(Url)
                 fs.write(TTFPath, Body)
             end
 
@@ -166,6 +166,9 @@ local Library do
 
             Library.Fonts.Data.Fonts[Name] = true
             table.insert(Library.Fonts.Data.List, Name)
+
+            -- Yield between fonts so the scheduler's no-yield timeout never trips.
+            task.wait(0)
         end
     end
 
@@ -189,10 +192,11 @@ local Library do
             local ImagePath = Library.Folders.Images .. "/" .. Name .. ".png"
 
             if not fs.file(ImagePath) then
-                fs.write(ImagePath, http.get({ url = Url }))
+                fs.write(ImagePath, http.get(Url))
             end
 
             Library.Icons[Name] = fs.read(ImagePath)
+            task.wait(0)
         end
     end
 
@@ -2974,7 +2978,7 @@ local Library do
     task.spawn(function()
         while Library.DrawingLoopRunning do
             AllocateDrawings()
-            task.wait()
+            task.wait(0)
         end
     end)
 
