@@ -69,7 +69,6 @@ local Library do
         Folders = {
             Directory = "Goop",
             Files = "Goop/Files",
-            Images = "Goop/Files/Images",
             Configs = "Goop/" .. tostring(game.GameId) .. "/Configs",
         },
 
@@ -148,31 +147,6 @@ local Library do
     Library.FontSize = 13
     Library.Font = "LilitaOne"
 
-    -- // Icons \\ --
-
-    local IconUrls = {
-        Home = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Home.png",
-        Style = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Style.png",
-        Config = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Images/Config.png",
-    }
-
-    Library.Icons = { }
-
-    local function LoadIcons()
-        for Name, Url in pairs(IconUrls) do
-            local ImagePath = Library.Folders.Images .. "/" .. Name .. ".png"
-
-            if not fs.file(ImagePath) then
-                fs.write(ImagePath, http.get(Url))
-            end
-
-            Library.Icons[Name] = fs.read(ImagePath)
-            task.wait(0)
-        end
-    end
-
-    LoadIcons()
-
     -- // Core \\ --
     local OutlineColor = vector.create(0, 0, 0)
     local PropCache = setmetatable({ }, { __mode = "k" })
@@ -181,7 +155,6 @@ local Library do
     local Constructors = {
         Square = Square,
         Text = Text,
-        Image = Image,
     }
 
     local function NewDrawing(Type, Properties)
@@ -283,15 +256,25 @@ local Library do
         CurrentScope = Scope
     end
 
+    -- Hides a drawing without allocating a property table.
+    local function HideDrawing(Object)
+        local Cache = PropCache[Object]
+        if Cache.Visible ~= false then
+            Object.Visible = false
+            Cache.Visible = false
+        end
+    end
+
     -- Ends the current scope: anything it drew last frame but not this frame is hidden.
     local function PopScope()
         local Scope = CurrentScope
         if Scope then
-            for Index = Scope.SquareCount + 1, #Scope.Squares do
-                UpdateDrawing(Scope.Squares[Index], { Visible = false })
+            local Squares, Texts = Scope.Squares, Scope.Texts
+            for Index = Scope.SquareCount + 1, #Squares do
+                HideDrawing(Squares[Index])
             end
-            for Index = Scope.TextCount + 1, #Scope.Texts do
-                UpdateDrawing(Scope.Texts[Index], { Visible = false })
+            for Index = Scope.TextCount + 1, #Texts do
+                HideDrawing(Texts[Index])
             end
         end
         local Previous = ScopeStack[ScopeDepth]
@@ -316,10 +299,10 @@ local Library do
 
     local function HideScope(Scope)
         for _, Object in Scope.Squares do
-            UpdateDrawing(Object, { Visible = false })
+            HideDrawing(Object)
         end
         for _, Object in Scope.Texts do
-            UpdateDrawing(Object, { Visible = false })
+            HideDrawing(Object)
         end
         Scope.Hidden = true
     end
@@ -392,12 +375,14 @@ local Library do
             Cache.W, Cache.H = W, H
         end
 
-        UpdateDrawing(Square, {
-            Visible = true,
-            Color = Color,
-            Opacity = Opacity or 1,
-            ZIndex = Scope.Base + Scope.Order,
-        })
+        -- Direct comparisons instead of UpdateDrawing: no property table is
+        -- allocated per call, so an unchanged frame produces no garbage.
+        Opacity = Opacity or 1
+        local ZIndex = Scope.Base + Scope.Order
+        if Cache.Visible ~= true then Square.Visible = true; Cache.Visible = true end
+        if Cache.Color ~= Color then Square.Color = Color; Cache.Color = Color end
+        if Cache.Opacity ~= Opacity then Square.Opacity = Opacity; Cache.Opacity = Opacity end
+        if Cache.ZIndex ~= ZIndex then Square.ZIndex = ZIndex; Cache.ZIndex = ZIndex end
     end
 
     local function DrawText(X, Y, Size, Color, Text, Opacity, Center)
@@ -422,27 +407,55 @@ local Library do
             Cache.X, Cache.Y = X, Y
         end
 
-        UpdateDrawing(Object, {
-            Visible = true,
-            Size = Size,
-            Color = Color,
-            Text = tostring(Text or ""),
-            Center = Center or false,
-            Opacity = Opacity or 1,
-            Font = Library.Font,
-            ZIndex = Scope.Base + Scope.Order,
-        })
+        Text = tostring(Text or "")
+        Center = Center or false
+        Opacity = Opacity or 1
+        local Font = Library.Font
+        local ZIndex = Scope.Base + Scope.Order
+        if Cache.Visible ~= true then Object.Visible = true; Cache.Visible = true end
+        -- Font and Size before Text, so a change doesn't lay the text out twice.
+        if Cache.Font ~= Font then Object.Font = Font; Cache.Font = Font end
+        if Cache.Size ~= Size then Object.Size = Size; Cache.Size = Size end
+        if Cache.Text ~= Text then Object.Text = Text; Cache.Text = Text end
+        if Cache.Color ~= Color then Object.Color = Color; Cache.Color = Color end
+        if Cache.Center ~= Center then Object.Center = Center; Cache.Center = Center end
+        if Cache.Opacity ~= Opacity then Object.Opacity = Opacity; Cache.Opacity = Opacity end
+        if Cache.ZIndex ~= ZIndex then Object.ZIndex = ZIndex; Cache.ZIndex = ZIndex end
     end
 
     local MeasureText = NewDrawing("Text", { Visible = false })
 
+    -- Measuring goes through a native Text object and is called for most labels
+    -- every frame (and once per removed character in TruncateText), so results
+    -- are cached per font/size/text. Cleared if it grows large (e.g. from
+    -- textbox input or live values like the watermark FPS).
+    local BoundsCache = { }
+    local BoundsCacheCount = 0
+
     local function GetTextBounds(Text, Size)
+        Text = tostring(Text)
+        Size = Size or Library.FontSize
+
+        local Key = tostring(Library.Font) .. "\0" .. Size .. "\0" .. Text
+        local Cached = BoundsCache[Key]
+        if Cached then
+            return Cached
+        end
+
         UpdateDrawing(MeasureText, {
-            Text = tostring(Text),
-            Size = Size or Library.FontSize,
+            Text = Text,
+            Size = Size,
             Font = Library.Font,
         })
-        return MeasureText.TextBounds
+
+        local Bounds = MeasureText.TextBounds
+        if BoundsCacheCount >= 2048 then
+            BoundsCache = { }
+            BoundsCacheCount = 0
+        end
+        BoundsCache[Key] = Bounds
+        BoundsCacheCount = BoundsCacheCount + 1
+        return Bounds
     end
 
     -- ZIndex bands. Within a window: chrome < sections < elements < popups.
@@ -459,7 +472,6 @@ local Library do
         ContextMenu = 930000,
         ColorPicker = 940000,
         NavBar = 950000,
-        NavIcon = 960000,
     }
     Library.ZBands = Z
     Library.CurrentWindowZ = 0
@@ -2094,87 +2106,98 @@ local Library do
             Library.StartWindowTask(Window)
         end
 
-        RunService.PostLocal:Connect(function()
-            local PressedKeys = getpressedkeys() or { }
-            local function IsKeyPressed(Target) return TableFind(PressedKeys, Target) ~= nil end
+        -- Input is library-wide, so it's hooked once (by the first window) rather
+        -- than once per window, which ran every keybind/keypicker check and
+        -- callback several times per tick. Connect returns nothing to disconnect,
+        -- so the handler checks Library.Unloaded instead.
+        if not Library.InputHooked then
+            Library.InputHooked = true
+            RunService.PostLocal:Connect(function()
+                if Library.Unloaded then return end
 
-            if Library.CapturingKeyPicker then
-                local Keypicker = Library.CapturingKeyPicker
-                if IsKeyPressed("Escape") then
-                    Keypicker.Capturing = false
-                    Library.CapturingKeyPicker = nil
-                else
-                    if tick() - Keypicker.CapturingTime >= 0.4 then
-                        for _, Key in PressedKeys do
-                            if Key ~= "LeftButton" and Key ~= "RightButton" and Key ~= "MB1" and Key ~= "MB2" and Key ~= "" and Key ~= "Escape" then
-                                Keypicker.BoundKey = Key
-                                Keypicker.Capturing = false
-                                Keypicker:SyncFlag()
-                                Library.CapturingKeyPicker = nil
-                                break
+                local PressedKeys = getpressedkeys() or { }
+                local function IsKeyPressed(Target) return TableFind(PressedKeys, Target) ~= nil end
+
+                if Library.CapturingKeyPicker then
+                    local Keypicker = Library.CapturingKeyPicker
+                    if IsKeyPressed("Escape") then
+                        Keypicker.Capturing = false
+                        Library.CapturingKeyPicker = nil
+                    else
+                        if tick() - Keypicker.CapturingTime >= 0.4 then
+                            for _, Key in PressedKeys do
+                                if Key ~= "LeftButton" and Key ~= "RightButton" and Key ~= "MB1" and Key ~= "MB2" and Key ~= "" and Key ~= "Escape" then
+                                    Keypicker.BoundKey = Key
+                                    Keypicker.Capturing = false
+                                    Keypicker:SyncFlag()
+                                    Library.CapturingKeyPicker = nil
+                                    break
+                                end
                             end
                         end
                     end
                 end
-            end
 
-            for _, Keybind in Window.Keybinds do
-                if IsKeyPressed(Keybind.Code) then
-                    if not (Window.KeybindPreviousStates[Keybind.Key] or false) then
-                        if Keybind.Element.Type == "Toggle" then
-                            Keybind.Element.Value = not Keybind.Element.Value
-                            Keybind.Element:SyncFlag()
-                            Keybind.Element.Callback(Keybind.Element.Value)
+                for _, Window in Library.Windows do
+                    for _, Keybind in Window.Keybinds do
+                        if IsKeyPressed(Keybind.Code) then
+                            if not (Window.KeybindPreviousStates[Keybind.Key] or false) then
+                                if Keybind.Element.Type == "Toggle" then
+                                    Keybind.Element.Value = not Keybind.Element.Value
+                                    Keybind.Element:SyncFlag()
+                                    Keybind.Element.Callback(Keybind.Element.Value)
+                                end
+                                Window.KeybindPreviousStates[Keybind.Key] = true
+                            end
+                        else
+                            Window.KeybindPreviousStates[Keybind.Key] = nil
                         end
-                        Window.KeybindPreviousStates[Keybind.Key] = true
                     end
-                else
-                    Window.KeybindPreviousStates[Keybind.Key] = nil
                 end
-            end
 
-            for _, Keypicker in Library.Input.ActiveKeyPickers do
-                if Keypicker.BoundKey ~= "None" then
-                    local TE = Keypicker.ToggleElement
-                    local KeyIsActive = IsKeyPressed(Keypicker.BoundKey)
+                for _, Keypicker in Library.Input.ActiveKeyPickers do
+                    if Keypicker.BoundKey ~= "None" then
+                        local TE = Keypicker.ToggleElement
+                        local KeyIsActive = IsKeyPressed(Keypicker.BoundKey)
 
-                    if Keypicker.Mode == "Toggle" then
-                        if KeyIsActive and not (Keypicker.PrevPressed or false) then
+                        if Keypicker.Mode == "Toggle" then
+                            if KeyIsActive and not (Keypicker.PrevPressed or false) then
+                                if TE then
+                                    if Keypicker.HasCallback then
+                                        Keypicker.Callback(not TE.Value)
+                                    else
+                                        TE.Value = not TE.Value
+                                        TE:SyncFlag()
+                                        TE.Callback(TE.Value)
+                                    end
+                                else
+                                    Keypicker.ToggledState = not (Keypicker.ToggledState or false)
+                                    if Keypicker.HasCallback then
+                                        Keypicker.Callback(Keypicker.ToggledState)
+                                    end
+                                end
+                                Keypicker.PrevPressed = true
+                            elseif not KeyIsActive then
+                                Keypicker.PrevPressed = false
+                            end
+
+                        elseif Keypicker.Mode == "Hold" then
                             if TE then
                                 if Keypicker.HasCallback then
-                                    Keypicker.Callback(not TE.Value)
-                                else
-                                    TE.Value = not TE.Value
+                                    Keypicker.Callback(KeyIsActive)
+                                elseif TE.Value ~= KeyIsActive then
+                                    TE.Value = KeyIsActive
                                     TE:SyncFlag()
                                     TE.Callback(TE.Value)
                                 end
-                            else
-                                Keypicker.ToggledState = not (Keypicker.ToggledState or false)
-                                if Keypicker.HasCallback then
-                                    Keypicker.Callback(Keypicker.ToggledState)
-                                end
-                            end
-                            Keypicker.PrevPressed = true
-                        elseif not KeyIsActive then
-                            Keypicker.PrevPressed = false
-                        end
-
-                    elseif Keypicker.Mode == "Hold" then
-                        if TE then
-                            if Keypicker.HasCallback then
+                            elseif Keypicker.HasCallback then
                                 Keypicker.Callback(KeyIsActive)
-                            elseif TE.Value ~= KeyIsActive then
-                                TE.Value = KeyIsActive
-                                TE:SyncFlag()
-                                TE.Callback(TE.Value)
                             end
-                        elseif Keypicker.HasCallback then
-                            Keypicker.Callback(KeyIsActive)
                         end
                     end
                 end
-            end
-        end)
+            end)
+        end
 
         return Window
     end
@@ -2716,6 +2739,9 @@ local Library do
             function MenuKP:SyncFlag()
                 OrigSync(self)
                 MainWin.MenuToggleKey = self.BoundKey
+                -- The new key is still held when it gets bound; treat it as
+                -- already pressed so binding it doesn't hide the menu.
+                Library.MasterPrevState = true
             end
             MainWin.MenuToggleKey = MenuKP.BoundKey
         end
@@ -2888,14 +2914,11 @@ local Library do
             Width = Width,
             Height = Height,
             Buttons = {
-                { Icon = Library.Icons.Home,   Window = Main },
-                { Icon = Library.Icons.Style,  Window = Style },
-                { Icon = Library.Icons.Config, Window = Configuration },
+                { Label = "M", Window = Main },
+                { Label = "S", Window = Style },
+                { Label = "C", Window = Configuration },
             },
         }
-
-        -- The icon Image objects are created (and rebuilt on colour change) by the
-        -- Drawing allocation loop; Render only positions and shows them.
     end
 
     -- // Watermark \\ --
@@ -2964,14 +2987,17 @@ local Library do
 
         local Roles = { }
 
+        -- Built in a local table and swapped in at the end, so the render task
+        -- never sees a half-built list.
         local function Rebuild()
-            Data.Matching = { }
+            local Matching = { }
             for _, Entry in Roles do
                 if type(Entry.Role) == "string" and RankSet[Entry.Role:lower()] then
-                    Data.Matching[#Data.Matching + 1] = { Name = Entry.Name, Role = Entry.Role }
+                    Matching[#Matching + 1] = { Name = Entry.Name, Role = Entry.Role }
                 end
             end
-            TableSort(Data.Matching, function(A, B) return A.Name:lower() < B.Name:lower() end)
+            TableSort(Matching, function(A, B) return A.Name:lower() < B.Name:lower() end)
+            Data.Matching = Matching
         end
 
         local function ResolveRole(UserId)
@@ -3088,12 +3114,10 @@ local Library do
 
     -- // Drawing Loop \\ --
     -- All Drawing object creation happens here: it keeps the scope reserve topped
-    -- up and builds the navigation bar icons. Nothing is created while rendering.
+    -- up. Nothing is created while rendering.
 
     Library.DrawingLoopRunning = true
     Library.Unloaded = false
-
-    local IconVariantKeys = { "White", "Accent", "Dim" }
 
     -- Creates at most `Budget` drawings per call. Returns true once the reserve
     -- has reached `Target`.
@@ -3108,43 +3132,6 @@ local Library do
         return #Reserve.Square >= Target.Square and #Reserve.Text >= Target.Text
     end
 
-    local function BuildNavIcons()
-        local NB = Library.NavigationBarData
-        if not (NB and NB.Buttons) then return end
-
-        -- Each icon gets one pre-built Image per colour state (White/Accent/Dim).
-        -- Rendering only toggles which variant is visible. A variant is rebuilt
-        -- only if its theme colour changed, only while hidden, at most twice a second.
-        for _, Btn in NB.Buttons do
-            local Variants = Btn._Variants
-            if not Variants then
-                Variants = { }
-                Btn._Variants = Variants
-            end
-            for _, Key in IconVariantKeys do
-                local Variant = Variants[Key]
-                local Color = Theme[Key]
-                local Stale = Variant and Variant.Color ~= Color
-                    and not PropCache[Variant.Drawing].Visible
-                    and tick() - Variant.Built >= 0.5
-                if not Variant or Stale then
-                    if Variant then Variant.Drawing:Remove() end
-                    Variants[Key] = {
-                        Drawing = NewDrawing("Image", {
-                            Visible = false,
-                            Data = Btn.Icon,
-                            Color = Color,
-                            Opacity = 1,
-                            ZIndex = Z.NavIcon,
-                        }),
-                        Color = Color,
-                        Built = tick(),
-                    }
-                end
-            end
-        end
-    end
-
     -- Initial reserve, created before any rendering starts. Yields between
     -- batches so loading doesn't hit the scheduler timeout.
     while not FillReserve(InitialReserve, 256) do
@@ -3154,7 +3141,6 @@ local Library do
     task.spawn(function()
         while Library.DrawingLoopRunning do
             FillReserve(ReserveTarget, 32)
-            BuildNavIcons()
             task.wait(0)
         end
     end)
@@ -3175,11 +3161,25 @@ local Library do
         end
     end
 
-    -- Frame task
+    -- Frame task. Frames are paced to Library.TargetFPS: the window and overlay
+    -- tasks only render when FrameId advances, and retained drawings stay on
+    -- screen in between, so the whole interface updates ~60 times a second.
+    Library.TargetFPS = 60
+
     task.spawn(function()
+        local NextFrameAt = 0
         while not Library.Unloaded do
+            local Now = tick()
+            if Now < NextFrameAt then
+                task.wait(0)
+                continue
+            end
+            local Interval = 1 / Library.TargetFPS
+            -- Step the schedule forward; resync if we fell more than a frame behind.
+            NextFrameAt = (Now - NextFrameAt > Interval) and (Now + Interval) or (NextFrameAt + Interval)
+
             Library.FrameId = Library.FrameId + 1
-            Library.FrameTime = tick()
+            Library.FrameTime = Now
 
             SafeRender("Frame", function()
                 Library:UpdateInput()
@@ -3314,23 +3314,10 @@ local Library do
                     Active and Theme["Accent"] or Theme["Border"],
                     Active and Theme["Accent"] or (Hovered and Theme["Dark Background"] or Theme["Background"]))
 
-                local IconPad = 6
-                local IW = BtnSize - IconPad * 2
-                local IH = IW
-
-                local IconKey = Active and "White" or (Hovered and "Accent" or "Dim")
-
-                if Btn._Variants then
-                    local IconPos = Vector2New(BX + IconPad, BY + IconPad)
-                    local IconSize = Vector2New(IW, IH)
-                    for Key, Variant in Btn._Variants do
-                        UpdateDrawing(Variant.Drawing, {
-                            Visible = Key == IconKey,
-                            Position = IconPos,
-                            Size = IconSize,
-                        })
-                    end
-                end
+                local LabelColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
+                local LabelBounds = GetTextBounds(Btn.Label)
+                DrawText(BX + MathFloor((BtnSize - LabelBounds.X) / 2), BY + MathFloor((BtnSize - LabelBounds.Y) / 2),
+                    Library.FontSize, LabelColor, Btn.Label)
 
                 if Library.Input.MouseClicked and Hovered and Btn.Window then
                     Library.Input.Consumed = true
@@ -3344,16 +3331,7 @@ local Library do
                 end
             end
             PopScope()
-        elseif Library.NavigationBarData then
-            for _, Btn in Library.NavigationBarData.Buttons do
-                if Btn._Variants then
-                    for _, Variant in Btn._Variants do
-                        UpdateDrawing(Variant.Drawing, { Visible = false })
-                    end
-                end
-            end
         end
-
     end
 
     -- Overlay task
@@ -3390,17 +3368,6 @@ local Library do
         end
 
         MeasureText:Remove()
-
-        if Library.NavigationBarData and Library.NavigationBarData.Buttons then
-            for _, Btn in ipairs(Library.NavigationBarData.Buttons) do
-                if Btn._Variants then
-                    for _, Variant in Btn._Variants do
-                        Variant.Drawing:Remove()
-                    end
-                    Btn._Variants = nil
-                end
-            end
-        end
     end
 end
 
