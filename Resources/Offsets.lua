@@ -1,4 +1,4 @@
-local Version = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Resources/Version.lua"))()
+local Version = game:GetClientVersion()
 local Source = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Offsets/" .. Version .. "/Offsets.hpp"
 
 local Offsets = {}
@@ -27,9 +27,8 @@ local function ParseSource(Response)
         end
 
         if Current then
-            local Name, Hex = Line:match(
-                "inline%s+constexpr%s+uintptr_t%s+(%w+)%s*=%s*(0x%x+)"
-            )
+            local Name, Hex = Line:match("inline%s+constexpr%s+uintptr_t%s+(%w+)%s*=%s*(0x%x+)")
+            
             if Name and Hex and Offsets[Current][Name] == nil then
                 Offsets[Current][Name] = tonumber(Hex)
             end
