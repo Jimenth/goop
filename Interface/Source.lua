@@ -3166,6 +3166,11 @@ local Library do
     -- screen in between, so the whole interface updates ~60 times a second.
     Library.TargetFPS = 60
 
+    -- Game-input blocking (see the frame task below).
+    Library.BlockGameInput = true
+    Library.BlockSettleTime = 0.4
+    Library.BlockMinInterval = 0.5
+
     task.spawn(function()
         local NextFrameAt = 0
         while not Library.Unloaded do
@@ -3226,12 +3231,29 @@ local Library do
                     end
                 end
 
-                -- Block game input while the interface is visible. Only called
-                -- when the state changes, not every frame.
-                local Blocked = Library.MasterVisible == true
-                if Blocked ~= Library.WindowBlocked then
-                    Library.WindowBlocked = Blocked
-                    block_roblox_window(Blocked)
+                -- Block game input while the interface is visible.
+                -- block_roblox_window is a native call on the game window, and
+                -- spamming the menu key used to fire it on every toggle. The
+                -- visibility now has to hold steady for BlockSettleTime before
+                -- it's applied, and calls are at least BlockMinInterval apart, so
+                -- rapid toggling never reaches it. Set Library.BlockGameInput =
+                -- false to turn blocking off entirely.
+                local Now = tick()
+                local Blocked = Library.MasterVisible == true and Library.BlockGameInput ~= false
+                if Blocked ~= (Library.WindowBlocked or false) then
+                    Library.BlockPendingSince = Library.BlockPendingSince or Now
+                    if Now - Library.BlockPendingSince >= Library.BlockSettleTime
+                        and Now - (Library.LastBlockChange or 0) >= Library.BlockMinInterval then
+                        Library.WindowBlocked = Blocked
+                        Library.LastBlockChange = Now
+                        Library.BlockPendingSince = nil
+                        local Ok, Err = pcall(block_roblox_window, Blocked)
+                        if not Ok then
+                            print("[Interface] block_roblox_window failed: " .. tostring(Err))
+                        end
+                    end
+                else
+                    Library.BlockPendingSince = nil
                 end
 
                 SweepScopes()
