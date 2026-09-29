@@ -21,7 +21,7 @@ local Window = Library:Window({
 **Page |**
 Creates a new Page Element inside of the called Window
 
-*Columns may be `1` or `2`. A Page holds a maximum of 2 Sections — any further Section calls fold into the last Section instead of creating a new one. ScrollableSections and MultiSections are separate and are not bound by that limit.*
+*Columns may be `1` or `2`. A Page can hold any number of Sections. If a column's Sections are taller than the Page, the Page becomes scrollable: drag the thumb on its right edge. Content scrolled out of view is hidden and can't be clicked. Options that are only partly in view are hidden until you scroll them fully into view.*
 
 ```lua
 local Page = Window:Page({
@@ -33,7 +33,7 @@ local Page = Window:Page({
 **Section |**
 Creates a new Section inside of the given Page
 
-*Side selects which column the Section renders in (`1` = left, `2` = right). With two Sections in a 2-column Page, the middle gap between them is 4 pixels.*
+*Side selects which column the Section renders in (`1` = left, `2` = right; on a 1-column Page every Section uses the single column). Sections in the same column stack top to bottom in the order they're created, 6 pixels apart. The gap between the two columns is 4 pixels.*
 
 ```lua
 local Section = Page:Section({
