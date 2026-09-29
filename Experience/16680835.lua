@@ -393,10 +393,10 @@ function Module.Function:TrackOzelaCode()
 
     task.spawn(function()
         while true do
-            local Ok, CorrectRfid, Code = pcall(Module.Function.GetOzelaCode, Module.Function)
+            local Ok, RFID, Code = pcall(Module.Function.GetOzelaCode, Module.Function)
 
-            if Ok and CorrectRfid then
-                Heist.RfidLabel:SetText("Correct RFID: " .. CorrectRfid)
+            if Ok and RFID then
+                Heist.RfidLabel:SetText("RFID: " .. RFID)
             end
 
             if Ok and Code then
@@ -494,7 +494,7 @@ function Module.Function.Render()
             local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
 
             if OnScreen then
-                DrawingImmediate.OutlinedText(Screen, 13, Color.Color, Color.Alpha, Entry.Label, true, "Proggy")
+                DrawingImmediate.OutlinedText(Screen, 13, Color.Color, Color.Alpha, Entry.Label, true, "Avant")
             end
         end
     end
@@ -505,7 +505,7 @@ end
 Module.Heists = {
     ["The Ozela Heist"] = {
         Setup = function(Section)
-            Module.Heist.RfidLabel = Section:Label({Name = "Correct RFID: Searching..."})
+            Module.Heist.RfidLabel = Section:Label({Name = "RFID: Searching..."})
             Module.Heist.CodeLabel = Section:Label({Name = "Code: Searching..."})
         end,
 
