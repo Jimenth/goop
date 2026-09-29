@@ -2,7 +2,6 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 
@@ -20,13 +19,16 @@ local Module = {
     Stored = {
         Entities = {},
         Citizen = {},
-        Police = {}
+        Police = {},
+        Objectives = {}
     },
 
-    Paths = {}
+    Paths = {},
+    Heist = {}
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
 
 -- // Interface \\ --
 
@@ -339,6 +341,217 @@ function Module.Function.AmmunitionLoop()
     end
 end
 
+function Module.Function:GetLabelText(Part)
+    local Gui = Part and Part:FindFirstChild("SurfaceGui")
+    local Label = Gui and Gui:FindFirstChild("TextLabel")
+    local Text = Label and Label.Text
+
+    if type(Text) ~= "string" then return nil end
+
+    Text = Text:match("^%s*(.-)%s*$")
+    return Text ~= "" and Text or nil
+end
+
+function Module.Function:GetOzelaCode()
+    local Reader = Workspace:FindFirstChild("prop_stadium_cardReader")
+    local Main = Reader and Reader:FindFirstChild("main")
+    local CorrectRfid = Module.Function:GetLabelText(Main and Main:FindFirstChild("serial"))
+    if not CorrectRfid then return nil, nil end
+
+    local Blueprints = Workspace:FindFirstChild("Blueprints")
+    local Table = Blueprints and Blueprints:FindFirstChild("prop_stadium_blueprintTableRNG")
+    local Blueprint = Table and Table:FindFirstChild("prop_stadium_blueprint")
+    if not Blueprint then return CorrectRfid, nil end
+
+    for Row = 1, 3 do
+        local RowModel = Blueprint:FindFirstChild(tostring(Row))
+        local Serial = RowModel and Module.Function:GetLabelText(RowModel:FindFirstChild("serial"))
+
+        if Serial == CorrectRfid then
+            local Colors = RowModel:FindFirstChild("colors")
+            if not Colors then return CorrectRfid, nil end
+
+            local Code = {}
+            for Index = 1, 4 do
+                local Color = Module.Function:GetLabelText(Colors:FindFirstChild(tostring(Index)))
+                if not Color then return CorrectRfid, nil end
+                Code[Index] = Color
+            end
+
+            return CorrectRfid, table.concat(Code)
+        end
+    end
+
+    return CorrectRfid, nil
+end
+
+function Module.Function:TrackOzelaCode()
+    local Heist = Module.Heist
+    if not Heist.CodeLabel then return end
+
+    task.spawn(function()
+        while true do
+            local Ok, CorrectRfid, Code = pcall(Module.Function.GetOzelaCode, Module.Function)
+
+            if Ok and CorrectRfid then
+                Heist.RfidLabel:SetText("Correct RFID: " .. CorrectRfid)
+            end
+
+            if Ok and Code then
+                Heist.CodeLabel:SetText("Code: " .. Code)
+                break
+            end
+
+            task.wait(1)
+        end
+    end)
+end
+
+-- // Objectives \\ --
+
+function Module.Function:FindPath(Root, Names, Start)
+    for Index = Start or 1, #Names do
+        Root = Root and Root:FindFirstChild(Names[Index])
+    end
+    return Root
+end
+
+function Module.Function:GetObjectPosition(Object)
+    if Object:IsA("BasePart") then
+        return Object.Position
+    end
+
+    local Part = Object.ClassName == "Model" and Object.PrimaryPart or nil
+    if not Part then
+        for _, Child in Object:GetChildren() do
+            if Child:IsA("BasePart") then
+                Part = Child
+                break
+            end
+        end
+    end
+
+    return Part and Part.Position
+end
+
+function Module.Function.Cache()
+    local Heist = Module.Heist.Current
+    local Stored = Module.Stored.Objectives
+    local Enabled = Library.Flags["Render Objectives"]
+
+    Module.Game.Camera = Workspace.CurrentCamera
+
+    for Identifier, Entry in Stored do
+        if not Entry or not Entry.Object.Parent or not Enabled then
+            Stored[Identifier] = nil
+        end
+    end
+
+    if not Enabled or not Heist or not Heist.Objectives then return end
+
+    for _, Definition in Heist.Objectives do\
+        local Container = Definition.Container
+        if not Container or not Container.Parent then
+            Container = Module.Function:FindPath(Workspace, Definition.Path)
+            Definition.Container = Container
+        end
+
+        if Container then
+            local Match = Definition.Match
+            for _, Child in Container:GetChildren() do
+                if Child and Child.Name == Match[1] then
+                    local Object = Module.Function:FindPath(Child, Match, 2)
+                    if Object then
+                        local Identifier = tostring(Object)
+                        if not Stored[Identifier] then
+                            Stored[Identifier] = { Object = Object, Label = Definition.Label }
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    for _, Entry in Stored do
+        Entry.Position = Module.Function:GetObjectPosition(Entry.Object)
+    end
+end
+
+function Module.Function.Render()
+    if not Library.Flags["Render Objectives"] then return end
+
+    local Camera = Module.Game.Camera
+    if not Camera then return end
+
+    local Color = Library.Flags["Objective Color"]
+
+    for _, Entry in Module.Stored.Objectives do
+        local Position = Entry.Position
+
+        if Position then
+            local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
+
+            if OnScreen then
+                DrawingImmediate.OutlinedText(Screen, 13, Color.Color, Color.Alpha, Entry.Label, true, "Proggy")
+            end
+        end
+    end
+end
+
+-- // Heists \\ --
+
+Module.Heists = {
+    ["The Ozela Heist"] = {
+        Setup = function(Section)
+            Module.Heist.RfidLabel = Section:Label({Name = "Correct RFID: Searching..."})
+            Module.Heist.CodeLabel = Section:Label({Name = "Code: Searching..."})
+        end,
+
+        Objectives = {
+            { Label = "Key Card", Path = { "Map", "KeyCard" }, Match = { "KeyCard" } },
+            { Label = "Rope", Path = { "mapEntities", "missionItems", "Ropes" }, Match = { "StageRope", "missionItem_rope" } },
+            { Label = "Hook", Path = { "mapEntities", "missionItems", "Hooks" }, Match = { "StageHook", "missionItem_hook" } },
+        },
+
+        Start = function()
+            Module.Function:TrackOzelaCode()
+        end,
+    },
+}
+
+function Module.Function:InitializeHeist()
+    local Ok, Name = pcall(function()
+        return Workspace:GetAttribute("CurrentHeist")
+    end)
+
+    local Heist = Ok and Name and Module.Heists[Name]
+    if not Heist then return end
+
+    Module.Heist.Name = Name
+    Module.Heist.Current = Heist
+
+    local Section = MainTab:Section({Name = "Current Heist", Side = 1})
+
+    if Heist.Setup then
+        Heist.Setup(Section)
+    end
+
+    if Heist.Objectives then
+        if Heist.Setup then
+            Section:Separator()
+        end
+
+        Section:Toggle({Name = "Render Objectives", Flag = "Render Objectives", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Objective", Flag = "Objective Color", Default = Color3.fromRGB(255, 255, 255), Alpha = 1, Callback = function(Color) end})
+
+        RunService.PostLocal:Connect(Module.Function.Cache)
+        RunService.Render:Connect(Module.Function.Render)
+    end
+
+    if Heist.Start then
+        Heist.Start()
+    end
+end
+
 function Module.Function:TeleportBags()
     if not Module.Game.BagArea then return end
 
@@ -356,6 +569,7 @@ end
 -- // Initalize \\ --
 
 Library:Watermark("Goop")
+Module.Function:InitializeHeist()
 PlayerSection:Button({ Name = "Secure Bags", Callback = function() Module.Function:TeleportBags() end })
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 RunService.PostLocal:Connect(Module.Function.AmmunitionLoop)
