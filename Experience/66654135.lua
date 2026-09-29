@@ -2,9 +2,7 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
-local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
 local Module = {
@@ -15,10 +13,13 @@ local Module = {
         Gun = nil,
         OldPosition = nil,
 
-        -- Render cache: filled outside the Render event, only read inside it.
-        RoleHolders = {},   -- { Player, Role, Color, Alpha } (refreshed every 0.25s)
-        RoleTargets = {},   -- { Role, Color, Alpha, Center, Size } (refreshed every tick)
+        Camera = Workspace.CurrentCamera,
+
         GunPosition = nil,
+
+        Targets = {},
+        CacheStamp = 0,
+        LastRoleScan = 0
     }
 }
 
@@ -30,8 +31,8 @@ task.wait(2)
 local TweenService = _G.TweenService
 
 local Roles = {
-    Knife = {"Murderer", Color3.fromRGB(255, 0, 0), 1},
-    Gun = {"Sheriff", Color3.fromRGB(0, 0, 255), 1}
+    Knife = { Name = "Murderer", Flag = "Murderer Color" },
+    Gun = { Name = "Sheriff", Flag = "Sheriff Color" }
 }
 
 -- // Interface \\ --
@@ -46,8 +47,8 @@ local AutofarmSection = MainTab:Section({Name = "Automation", Side = 2})
 -- // Visuals Section \\ --
 
 local RenderRoles = VisualsSection:Toggle({ Name = "Render Roles", Flag = "Render Roles", Default = false, Callback = function(Value) end })
-RenderRoles:ColorPicker({ Name = "Sheriff", Flag = "Sheriff Color", Default = Color3.fromRGB(0, 0, 255), Alpha = 1, Callback = function(Color) Roles.Gun[2] = Color end })
-RenderRoles:ColorPicker({ Name = "Murderer", Flag = "Murderer Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 1, Callback = function(Color) Roles.Knife[2] = Color end })
+RenderRoles:ColorPicker({ Name = "Sheriff", Flag = "Sheriff Color", Default = Color3.fromRGB(0, 0, 255), Alpha = 1, Callback = function(Color) end })
+RenderRoles:ColorPicker({ Name = "Murderer", Flag = "Murderer Color", Default = Color3.fromRGB(255, 0, 0), Alpha = 1, Callback = function(Color) end })
 
 local RenderGun = VisualsSection:Toggle({ Name = "Render Gun", Flag = "Render Gun", Default = false, Callback = function(Value) end })
 RenderGun:ColorPicker({ Name = "Gun Color", Flag = "Gun Color", Default = Color3.fromRGB(0, 255, 0), Alpha = 1, Callback = function(Color) end })
@@ -108,21 +109,21 @@ function Module.Function:CheckRole(Player)
     for _, Tool in ipairs(Character:GetChildren()) do
         local Data = Roles[Tool.Name]
         if Data then
-            return Data[1], Data[2], Data[3]
+            return Data.Name, Data.Flag
         end
     end
 
     for _, Tool in ipairs(Backpack:GetChildren()) do
         local Data = Roles[Tool.Name]
         if Data then
-            return Data[1], Data[2], Data[3]
+            return Data.Name, Data.Flag
         end
     end
 
     return nil, nil
 end
 
-function Module.Function:WorldBoxToScreen(Center, Size)
+function Module.Function:WorldBoxToScreen(Camera, Center, Size)
     local HalfX, HalfY, HalfZ = Size.X / 2, Size.Y / 2, Size.Z / 2
     local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
     local OnScreen = false
@@ -140,78 +141,89 @@ function Module.Function:WorldBoxToScreen(Center, Size)
     return MinX, MinY, MaxX, MaxY, OnScreen
 end
 
--- // Render Cache \\ --
--- Everything that touches the game (GetChildren, FindFirstChild, Character,
--- GetBoundingBox, Position, ...) happens here, outside RunService.Render.
+function Module.Function.Cache()
+    local Stored = Module.Stored
 
--- Who holds a role only changes occasionally, so it's scanned a few times a second.
-function Module.Function.UpdateRoleHolders()
-    local Holders = {}
+    Stored.Camera = Workspace.CurrentCamera or Stored.Camera
 
-    if Library.Flags["Render Roles"] then
-        for _, Player in Players:GetChildren() do
-            if Player == LocalPlayer then continue end
-
-            local Role, Color, Alpha = Module.Function:CheckRole(Player)
-            if Role then
-                Holders[#Holders + 1] = { Player = Player, Role = Role, Color = Color, Alpha = Alpha }
-            end
-        end
+    local Gun = Stored.Gun
+    if Library.Flags["Render Gun"] and Gun and Gun.Parent then
+        Stored.GunPosition = Gun.Position
+    else
+        Stored.GunPosition = nil
     end
 
-    Module.Stored.RoleHolders = Holders
-end
+    local Targets = Stored.Targets
+    if not Library.Flags["Render Roles"] then
+        table.clear(Targets)
+        return
+    end
 
--- Positions change every frame, so they're refreshed every tick.
-function Module.Function.UpdateRenderCache()
-    local Targets = {}
+    local Now = tick()
+    local RescanRoles = Now - Stored.LastRoleScan >= 0.25
+    if RescanRoles then
+        Stored.LastRoleScan = Now
+    end
 
-    if Library.Flags["Render Roles"] then
-        for _, Holder in Module.Stored.RoleHolders do
-            local Character = Holder.Player.Character
-            if Character and Character.Parent then
+    local Stamp = Stored.CacheStamp + 1
+    Stored.CacheStamp = Stamp
+
+    for _, Player in Players:GetChildren() do
+        if Player == LocalPlayer then continue end
+
+        local Target = Targets[Player]
+        if not Target then
+            Target = {}
+            Targets[Player] = Target
+        end
+
+        if RescanRoles or not Target.Stamp then
+            Target.Role, Target.Flag = Module.Function:CheckRole(Player)
+        end
+        Target.Stamp = Stamp
+
+        Target.Center, Target.Size = nil, nil
+        if Target.Role then
+            local Character = Player.Character
+            if Character then
                 local Box, Size = Character:GetBoundingBox()
-                if Box and Size and Size.Y > 0 then
-                    Targets[#Targets + 1] = {
-                        Role = Holder.Role,
-                        Color = Holder.Color,
-                        Alpha = Holder.Alpha,
-                        Center = Box.Position,
-                        Size = Size,
-                    }
+                if Size.Y > 0 then
+                    Target.Center, Target.Size = Box.Position, Size
                 end
             end
         end
     end
 
-    Module.Stored.RoleTargets = Targets
-
-    local Gun = Module.Stored.Gun
-    if Library.Flags["Render Gun"] and Gun and Gun.Parent then
-        Module.Stored.GunPosition = Gun.Position
-    else
-        Module.Stored.GunPosition = nil
+    for Player, Target in Targets do
+        if Target.Stamp ~= Stamp then
+            Targets[Player] = nil
+        end
     end
 end
 
--- // Render \\ --
--- Only iterates the cached tables and draws with DrawingImmediate.
-
 function Module.Function.Render()
-    local GunPosition = Module.Stored.GunPosition
-    if GunPosition then
-        local Screen, OnScreen = Camera:WorldToScreenPoint(GunPosition)
+    local Stored = Module.Stored
+    local Camera = Stored.Camera
+    if not Camera then return end
+
+    if Library.Flags["Render Gun"] and Stored.GunPosition then
+        local Screen, OnScreen = Camera:WorldToScreenPoint(Stored.GunPosition)
         if OnScreen then
-            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, Library.Font)
+            DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Gun Color"].Color, Library.Flags["Gun Color"].Alpha, "Gun", true, "Avant")
         end
     end
 
-    for _, Target in Module.Stored.RoleTargets do
-        local MinX, MinY, MaxX, MaxY, OnScreen = Module.Function:WorldBoxToScreen(Target.Center, Target.Size)
-        if OnScreen then
-            local CenterX = (MinX + MaxX) / 2
-            local BottomY = MaxY + 1
-            DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 13, Target.Color, Target.Alpha, Target.Role, true, Library.Font)
+    if Library.Flags["Render Roles"] then
+        for _, Target in Stored.Targets do
+            if Target.Role and Target.Center then
+                local MinX, MinY, MaxX, MaxY, OnScreen = Module.Function:WorldBoxToScreen(Camera, Target.Center, Target.Size)
+                if OnScreen then
+                    local Color = Library.Flags[Target.Flag]
+                    local CenterX = (MinX + MaxX) / 2
+                    local BottomY = MaxY + 1
+                    DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 13, Color.Color, Color.Alpha, Target.Role, true, "Avant")
+                end
+            end
         end
     end
 end
@@ -334,8 +346,5 @@ ExploitsSection:Button({ Name = "Teleport To Gun", Callback = function() Module.
 
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
-
-task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRoleHolders) end end)
-task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
-
+RunService.PostLocal:Connect(Module.Function.Cache)
 RunService.Render:Connect(Module.Function.Render)
