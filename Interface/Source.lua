@@ -154,7 +154,6 @@ local Library do
     local OutlineColor = vector.create(0, 0, 0)
     local PropCache = setmetatable({ }, { __mode = "k" })
 
-    -- Drawing.new is deprecated (see spec.d.luau); use the type constructors.
     local Constructors = {
         Square = Square,
         Text = Text,
@@ -445,37 +444,56 @@ local Library do
 
     local MeasureText = NewDrawing("Text", { Visible = false })
 
-    -- Measuring goes through a native Text object and is called for most labels
-    -- every frame (and once per removed character in TruncateText), so results
-    -- are cached per font/size/text. Cleared if it grows large (e.g. from
-    -- textbox input or live values like the watermark FPS).
+    -- Text measuring. DrawingImmediate.GetTextBounds computes bounds directly,
+    -- so it's used when available. The fallback (setting Text on a hidden Text
+    -- object and reading TextBounds) can return the *previous* text's bounds
+    -- when the native side hasn't updated yet, which is what left some labels
+    -- off-centre; so only the direct results are cached, keyed by
+    -- font/size/text and cleared if the cache grows large.
     local BoundsCache = { }
     local BoundsCacheCount = 0
+
+    local ImmediateBounds = nil
+    do
+        local Measure = DrawingImmediate and DrawingImmediate.GetTextBounds
+        if Measure then
+            local Ok, Result = pcall(Measure, Library.Font, Library.FontSize, "Test")
+            if Ok and Result and type(Result.X) == "number" and Result.X > 0 then
+                ImmediateBounds = Measure
+            end
+        end
+    end
 
     local function GetTextBounds(Text, Size)
         Text = tostring(Text)
         Size = Size or Library.FontSize
 
-        local Key = tostring(Library.Font) .. "\0" .. Size .. "\0" .. Text
-        local Cached = BoundsCache[Key]
-        if Cached then
-            return Cached
+        if ImmediateBounds then
+            local Key = tostring(Library.Font) .. "\0" .. Size .. "\0" .. Text
+            local Cached = BoundsCache[Key]
+            if Cached then
+                return Cached
+            end
+
+            local Ok, Bounds = pcall(ImmediateBounds, Library.Font, Size, Text)
+            if Ok and Bounds then
+                if BoundsCacheCount >= 2048 then
+                    BoundsCache = { }
+                    BoundsCacheCount = 0
+                end
+                BoundsCache[Key] = Bounds
+                BoundsCacheCount = BoundsCacheCount + 1
+                return Bounds
+            end
         end
 
+        -- Fallback: measured fresh every call, never cached.
         UpdateDrawing(MeasureText, {
             Text = Text,
             Size = Size,
             Font = Library.Font,
         })
-
-        local Bounds = MeasureText.TextBounds
-        if BoundsCacheCount >= 2048 then
-            BoundsCache = { }
-            BoundsCacheCount = 0
-        end
-        BoundsCache[Key] = Bounds
-        BoundsCacheCount = BoundsCacheCount + 1
-        return Bounds
+        return MeasureText.TextBounds
     end
 
     -- ZIndex bands. Within a window: chrome < sections < elements < popups.
@@ -2926,7 +2944,7 @@ local Library do
 
             if #State.List == 0 then
                 local Bounds = GetTextBounds("No configs saved", 13)
-                DrawText(X + MathFloor((W - Bounds.X) / 2), Y + MathFloor((BoxH - Bounds.Y) / 2), 14, Theme["Dim"], "No configs saved")
+                DrawText(X + MathFloor((W - Bounds.X) / 2), Y + MathFloor((BoxH - Bounds.Y) / 2), 13, Theme["Dim"], "No configs saved")
                 return
             end
 
