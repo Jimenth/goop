@@ -129,3 +129,15 @@ Notoriety
 
 + Added Heist-Specific Features (Only Ozela for Now)
 ```
+
+9/29/26
+```
+- Removed Project Delta Support
+- Removed Fallen Survival Support
+
++ Fixed Foresto Support
++ Fixed MM2 Support
++ Fixed Cursed Tank Simulator Support
++ Fixed Hunting Season Support
++ Fixed Emergency Response Liberty County Support
+```
