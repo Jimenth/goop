@@ -28,7 +28,9 @@ local Module = {
 }
 
 local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Interface/Source.lua"))()
+task.wait(2)
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
+task.wait(1)
 
 -- // Interface \\ --
 
