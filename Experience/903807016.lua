@@ -3,7 +3,6 @@
 local Workspace = game:GetService("Workspace")
 local UserInputService = game:GetService("UserInputService")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -22,11 +21,6 @@ local Module = {
     Stored = {
         Game = {},
         Characters = {},
-
-        -- Render cache: filled outside RunService.Render, only read inside it.
-        RenderGame = {},   -- { Position, Text, Color, Alpha } (every tick)
-        RenderWanted = {}, -- { BoxCFrame, BoxSize } (every tick)
-
         Mouse = {X = 0, Y = 0},
         MouseMove = {
             Active = false,
@@ -978,73 +972,47 @@ function Module.Function:SolveVehicle()
     return true
 end
 
--- // Render Cache \\ --
--- Everything that touches the game (positions, FindFirstChild, bounding boxes)
--- happens here, outside RunService.Render.
-
-function Module.Function.UpdateRenderCache()
-    local Flags = Library.Flags
-    local CameraPosition = Camera.Position
-
-    local GameCache = {}
+function Module.Function.Render()
     for _, Entry in Module.Stored.Game do
-        if not (Entry and Entry.Model and Flags["Render " .. Entry.Class]) then continue end
+        if Library.Flags["Render ".. Entry.Class] then
+            if Entry and Entry.Model then
+                local Primary = Entry.Object
+                if not Primary then continue end
 
-        local Primary = Entry.Object
-        if not (Primary and Primary.Parent) then continue end
+                local Text = Entry.Name
 
-        local Position = Primary.Position
-        if vector.magnitude(CameraPosition - Position) <= Flags[Entry.Class .. " Render"].Value then
-            local Color = Flags[Entry.Class .. " Color"]
-            GameCache[#GameCache + 1] = { Position = Position, Text = Entry.Name, Color = Color.Color, Alpha = Color.Alpha }
-        end
-    end
-    Module.Stored.RenderGame = GameCache
+                local Distance = vector.magnitude(Camera.Position - Primary.Position)
+                if Distance <= Library.Flags[Entry.Class.. " Render"].Value then
+                    local Screen, Visible = Camera:WorldToScreenPoint(Primary.Position)
 
-    local WantedCache = {}
-    if Flags["Render Wanted"] then
-        for _, Instance in pairs(Module.Stored.Characters) do
-            if not Instance.Character or Instance.Player == LocalPlayer then continue end
-            if Instance.Count > 0 and Instance.Player:FindFirstChild("Is_Wanted") then
-                local BoxCFrame, BoxSize = GetBoundingBox(Instance.Parts)
-                if BoxCFrame then
-                    WantedCache[#WantedCache + 1] = { BoxCFrame = BoxCFrame, BoxSize = BoxSize }
+                    if Visible then
+                        DrawingImmediate.OutlinedText(Screen, 13, Library.Flags[Entry.Class.. " Color"].Color, Library.Flags[Entry.Class.. " Color"].Alpha, Text, true, "Avant")
+                    end
                 end
             end
         end
     end
-    Module.Stored.RenderWanted = WantedCache
-end
 
--- // Render \\ --
--- Only iterates the render cache and draws with DrawingImmediate.
+    if Library.Flags["Render Wanted"] then
+        for _, Instance in pairs(Module.Stored.Characters) do
+            if not Instance.Character then continue end
+            if Instance.Player == LocalPlayer then continue end
+            local Player = Instance.Player
 
-function Module.Function.Render()
-    for _, Entry in Module.Stored.RenderGame do
-        local Screen, Visible = Camera:WorldToScreenPoint(Entry.Position)
-        if Visible then
-            DrawingImmediate.OutlinedText(Screen, 13, Entry.Color, Entry.Alpha, Entry.Text, true, Library.Font)
+            if Player:FindFirstChild("Is_Wanted") then
+                if Instance.Count > 0 then
+                    local Box, Size = GetBoundingBox(Instance.Parts)
+                    local Position, ScreenSize = Module.Function:WorldBoxToScreen(Box, Size)
+                    if Position and ScreenSize then
+                        local CenterX = Position.X + ScreenSize.X * 0.5
+                        local BottomY = Position.Y + ScreenSize.Y + 1
+
+                        DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, Library.Flags["Wanted Color"].Color, Library.Flags["Wanted Color"].Alpha, "WANTED", true, "Avant")
+                    end
+                end
+            end
         end
     end
-
-    local WantedColor = Library.Flags["Wanted Color"]
-    for _, Entry in Module.Stored.RenderWanted do
-        local Position, ScreenSize = Module.Function:WorldBoxToScreen(Entry.BoxCFrame, Entry.BoxSize)
-        if Position and ScreenSize then
-            local CenterX = Position.X + ScreenSize.X * 0.5
-            local BottomY = Position.Y + ScreenSize.Y + 1
-
-            DrawingImmediate.OutlinedText(Vector2.new(CenterX, BottomY), 14, WantedColor.Color, WantedColor.Alpha, "WANTED", true, Library.Font)
-        end
-    end
-end
-
-function Module.Function.PostLocal()
-    Module.Function:UpdateInput()
-
-    Module.Function:SolveATM()
-    Module.Function:SolveJewelry()
-    Module.Function:SolveVehicle()
 end
 
 -- // Initalize \\ --
@@ -1052,10 +1020,26 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
-task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
-task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
-
-task.spawn(function() while true do task.wait(0.01) Module.Function:SolveLockpick() end end)
-
-RunService.PostLocal:Connect(Module.Function.PostLocal)
 RunService.Render:Connect(Module.Function.Render)
+
+task.spawn(function()
+    while true do
+        task.wait(0.8)
+        Module.Function:Cache()
+    end
+end)
+
+RunService.PostLocal:Connect(function()
+    Module.Function:UpdateInput()
+
+    Module.Function:SolveATM()
+    Module.Function:SolveJewelry()
+    Module.Function:SolveVehicle()
+end)
+
+task.spawn(function()
+    while true do
+        task.wait(0.01)
+        Module.Function:SolveLockpick()
+    end
+end)
