@@ -14,8 +14,6 @@
 
 [Reign Fall](https://www.roblox.com/games/11765763028/Reign-Fall)
 
-[Havoc](https://www.roblox.com/games/13927562399/Havoc)
-
 [War Tycoon](https://www.roblox.com/games/4639625707/War-Tycoon)
 
 [Emergency Response Liberty County](https://www.roblox.com/games/2534724415/Emergency-Response-Liberty-County)
