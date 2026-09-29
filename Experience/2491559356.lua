@@ -2,7 +2,6 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -17,10 +16,7 @@ local Module = {
     
     Stored = {
         Vehicles = {},
-
-        -- Render cache: filled outside RunService.Render, only read inside it.
-        RenderTargets = {}, -- tanks to draw and their relevant parts (every 0.25s)
-        RenderCache = {},   -- per-frame snapshot of those parts' CFrames/sizes
+        Targets = {},
         --[[
         Original = {
             Penetration = setmetatable({}, { __mode = "k" }),
@@ -34,8 +30,6 @@ local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimen
 task.wait(2)
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Module.lua"))()
 task.wait(2)
-
--- // Convex Buffers & Locals \\ --
 
 local Vector2New = Vector2.new
 local Vector3New = Vector3.new
@@ -57,8 +51,7 @@ local Convex = {
     }
 }
 
-function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
-    local Center = BoxCFrame.Position
+function Module.Function:WorldBoxToScreen(Center, BoxSize)
     local HX, HY, HZ = BoxSize.X * 0.5, BoxSize.Y * 0.5, BoxSize.Z * 0.5
 
     local MinX, MinY = math.huge, math.huge
@@ -291,64 +284,64 @@ function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     return Size - 1
 end
 
-function Module.Function:ProjectPartCorners(Snapshot, WriteOffset)
-    local PartCFrame = Snapshot.CFrame
-    local Position = PartCFrame.Position
-    local Size = Snapshot.Size
+function Module.Function:CollectPartCorners(Parts, Out)
+    local Count = 0
 
-    local PositionX = Position.X
-    local PositionY = Position.Y
-    local PositionZ = Position.Z
+    for _, Part in ipairs(Parts) do
+        if Part and Part.Parent and Part:IsA("BasePart") then
+            local PartCFrame = Part.CFrame
+            local Position = PartCFrame.Position
+            local Size = Part.Size
 
-    local HalfSizeX = Size.X * 0.5
-    local HalfSizeY = Size.Y * 0.5
-    local HalfSizeZ = Size.Z * 0.5
+            local HalfSizeX = Size.X * 0.5
+            local HalfSizeY = Size.Y * 0.5
+            local HalfSizeZ = Size.Z * 0.5
 
-    local RightVector = PartCFrame.RightVector
-    local UpVector = PartCFrame.UpVector
-    local LookVector = PartCFrame.LookVector
+            local RightVector = PartCFrame.RightVector
+            local UpVector = PartCFrame.UpVector
+            local LookVector = PartCFrame.LookVector
 
-    local RightX = RightVector.X * HalfSizeX
-    local RightY = RightVector.Y * HalfSizeX
-    local RightZ = RightVector.Z * HalfSizeX
+            local RightX, RightY, RightZ = RightVector.X * HalfSizeX, RightVector.Y * HalfSizeX, RightVector.Z * HalfSizeX
+            local UpX, UpY, UpZ = UpVector.X * HalfSizeY, UpVector.Y * HalfSizeY, UpVector.Z * HalfSizeY
+            local LookX, LookY, LookZ = LookVector.X * HalfSizeZ, LookVector.Y * HalfSizeZ, LookVector.Z * HalfSizeZ
 
-    local UpX = UpVector.X * HalfSizeY
-    local UpY = UpVector.Y * HalfSizeY
-    local UpZ = UpVector.Z * HalfSizeY
-
-    local LookX = LookVector.X * HalfSizeZ
-    local LookY = LookVector.Y * HalfSizeZ
-    local LookZ = LookVector.Z * HalfSizeZ
-
-    local SignR = 1
-    for _ = 1, 2 do
-        local SignU = 1
-        for _ = 1, 2 do
-            local SignL = 1
-            for _ = 1, 2 do
-                local WorldPoint = Vector3New(
-                    PositionX + SignR * RightX + SignU * UpX + SignL * LookX,
-                    PositionY + SignR * RightY + SignU * UpY + SignL * LookY,
-                    PositionZ + SignR * RightZ + SignU * UpZ + SignL * LookZ
-                )
-
-                local ScreenPoint, OnScreen = Camera:WorldToScreenPoint(WorldPoint)
-                if OnScreen then
-                    WriteOffset = WriteOffset + 1
-                    local Slot = Convex.Scratch.Points[WriteOffset]
-                    if Slot then
-                        Slot.X = ScreenPoint.X
-                        Slot.Y = ScreenPoint.Y
-                    else
-                        Convex.Scratch.Points[WriteOffset] = {X = ScreenPoint.X, Y = ScreenPoint.Y}
+            for SignR = -1, 1, 2 do
+                for SignU = -1, 1, 2 do
+                    for SignL = -1, 1, 2 do
+                        Count = Count + 1
+                        Out[Count] = Vector3New(
+                            Position.X + SignR * RightX + SignU * UpX + SignL * LookX,
+                            Position.Y + SignR * RightY + SignU * UpY + SignL * LookY,
+                            Position.Z + SignR * RightZ + SignU * UpZ + SignL * LookZ
+                        )
                     end
                 end
-
-                SignL = -1
             end
-            SignU = -1
         end
-        SignR = -1
+    end
+
+    for Index = Count + 1, #Out do
+        Out[Index] = nil
+    end
+
+    return Count
+end
+
+function Module.Function:ProjectCorners(Corners, Count, WriteOffset)
+    local Points = Convex.Scratch.Points
+
+    for Index = 1, Count do
+        local ScreenPoint, OnScreen = Camera:WorldToScreenPoint(Corners[Index])
+        if OnScreen then
+            WriteOffset = WriteOffset + 1
+            local Slot = Points[WriteOffset]
+            if Slot then
+                Slot.X = ScreenPoint.X
+                Slot.Y = ScreenPoint.Y
+            else
+                Points[WriteOffset] = {X = ScreenPoint.X, Y = ScreenPoint.Y}
+            end
+        end
     end
 
     return WriteOffset
@@ -388,11 +381,8 @@ function Module.Function:DrawOutline(Verts, Size, Color, Opacity, Thickness)
     Polyline(Verts, Color, Opacity, Thickness)
 end
 
-function Module.Function:DrawAmmoHull(Snapshots, Color)
-    local PointCount = 0
-    for _, Snapshot in ipairs(Snapshots) do
-        PointCount = self:ProjectPartCorners(Snapshot, PointCount)
-    end
+function Module.Function:DrawAmmoHull(Corners, CornerCount, Color)
+    local PointCount = self:ProjectCorners(Corners, CornerCount, 0)
 
     if PointCount == 0 then return end
     Convex.Static.HWMPoints = self:TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
@@ -470,107 +460,106 @@ function Module.Function:GetBoundingParts(Vehicle)
     return Parts
 end
 
--- // Render Cache \\ --
--- Everything that touches the game (GetChildren, FindFirstChild, teams, CFrames,
--- bounding boxes) happens here, outside RunService.Render.
+function Module.Function:RefreshTargets()
+    local Targets = Module.Stored.Targets
+    local Vehicles = Module.Stored.Vehicles
 
--- Which tanks to draw and which of their parts matter. Scanned a few times a second.
-function Module.Function.UpdateRenderTargets()
-    local Flags = Library.Flags
-    local Targets = {}
+    for Identifier, Data in Targets do
+        if not Vehicles[Identifier] then
+            Targets[Identifier] = nil
+        end
+    end
 
-    if Flags["Enabled"] and (Flags["Render Names"] or Flags["Render Box"] or Flags["Render Turret Ammo"] or Flags["Render Hull Ammo"]) then
-        local LocalTeam = LocalPlayer.Team and LocalPlayer.Team.Name
+    local LocalTeam = LocalPlayer.Team and LocalPlayer.Team.Name
 
-        for _, Tank in Module.Stored.Vehicles do
-            if not Tank or not Tank.Parent then continue end
+    for Identifier, Vehicle in Vehicles do
+        local Ok, Name, Team, HullAmmo, TurretAmmo, BoxParts = pcall(function()
+            local Name = Module.Function:GetRealName(Vehicle)
+            local Team = Module.Function:GetPlayerTeam(Name)
+            local HullAmmo, TurretAmmo = Module.Function:GetAmmunition(Vehicle)
+            return Name, Team, HullAmmo, TurretAmmo, Module.Function:GetBoundingParts(Vehicle)
+        end)
 
-            local Name = Module.Function:GetRealName(Tank)
-            if Module.Function:GetPlayerTeam(Name) == LocalTeam then continue end
-
-            local HullAmmo, TurretAmmo
-            if Flags["Render Turret Ammo"] or Flags["Render Hull Ammo"] then
-                HullAmmo, TurretAmmo = Module.Function:GetAmmunition(Tank)
+        if Ok then
+            local Data = Targets[Identifier]
+            if not Data then
+                Data = { HullCorners = {}, TurretCorners = {}, HullCount = 0, TurretCount = 0 }
+                Targets[Identifier] = Data
             end
 
-            local BoxParts = {}
-            if Flags["Render Box"] or Flags["Render Names"] then
-                BoxParts = Module.Function:GetBoundingParts(Tank)
-            end
-
-            Targets[#Targets + 1] = {
-                Tank = Tank,
-                Name = Name,
-                HullAmmo = HullAmmo,
-                TurretAmmo = TurretAmmo,
-                BoxParts = BoxParts,
-            }
+            Data.Vehicle = Vehicle
+            Data.Name = Name
+            Data.Enemy = Team ~= LocalTeam
+            Data.HullAmmo = HullAmmo
+            Data.TurretAmmo = TurretAmmo
+            Data.BoxParts = BoxParts
         end
     end
-
-    Module.Stored.RenderTargets = Targets
 end
 
-local function SnapshotParts(Parts)
-    if not Parts then return nil end
+function Module.Function.UpdateTargets()
+    Camera = Workspace.CurrentCamera or Camera
 
-    local Snapshots = {}
-    for _, Part in Parts do
-        if Part and Part.Parent then
-            Snapshots[#Snapshots + 1] = { CFrame = Part.CFrame, Size = Part.Size }
-        end
-    end
-    return Snapshots
-end
+    if not Library.Flags["Enabled"] then return end
 
--- Where those parts are right now. Refreshed every tick.
-function Module.Function.UpdateRenderCache()
-    local Cache = {}
-
-    for _, Target in Module.Stored.RenderTargets do
-        if not Target.Tank.Parent then continue end
-
-        local Entry = {
-            Name = Target.Name,
-            HullAmmo = SnapshotParts(Target.HullAmmo),
-            TurretAmmo = SnapshotParts(Target.TurretAmmo),
-        }
-
-        if #Target.BoxParts > 0 then
-            Entry.BoxCFrame, Entry.BoxSize = GetBoundingBox(Target.BoxParts)
-        end
-
-        Cache[#Cache + 1] = Entry
-    end
-
-    Module.Stored.RenderCache = Cache
-end
-
--- // Render \\ --
--- Only iterates the render cache and draws with DrawingImmediate.
-
-function Module.Function.Render()
     local Flags = Library.Flags
-    if not Flags["Enabled"] then return end
+    local WantAmmo = Flags["Render Turret Ammo"] or Flags["Render Hull Ammo"]
+    local WantBox = Flags["Render Box"] or Flags["Render Names"]
+    if not (WantAmmo or WantBox) then return end
 
-    for _, Entry in Module.Stored.RenderCache do
-        if Flags["Render Turret Ammo"] and Entry.TurretAmmo then
-            Module.Function:DrawAmmoHull(Entry.TurretAmmo, Flags["Turret Ammo Color"])
+    for Identifier, Data in Module.Stored.Targets do
+        local Vehicle = Data.Vehicle
+        if not Vehicle or not Vehicle.Parent then
+            Module.Stored.Targets[Identifier] = nil
+            continue
         end
 
-        if Flags["Render Hull Ammo"] and Entry.HullAmmo then
-            Module.Function:DrawAmmoHull(Entry.HullAmmo, Flags["Hull Ammo Color"])
+        Data.HullCount, Data.TurretCount = 0, 0
+        Data.BoxCenter, Data.BoxSize = nil, nil
+
+        if not Data.Enemy then continue end
+
+        if Flags["Render Hull Ammo"] and Data.HullAmmo then
+            Data.HullCount = Module.Function:CollectPartCorners(Data.HullAmmo, Data.HullCorners)
         end
 
-        if Entry.BoxCFrame and (Flags["Render Box"] or Flags["Render Names"]) then
-            local Position, Size = Module.Function:WorldBoxToScreen(Entry.BoxCFrame, Entry.BoxSize)
+        if Flags["Render Turret Ammo"] and Data.TurretAmmo then
+            Data.TurretCount = Module.Function:CollectPartCorners(Data.TurretAmmo, Data.TurretCorners)
+        end
+
+        if WantBox and Data.BoxParts and #Data.BoxParts > 0 then
+            local Ok, BoxCFrame, BoxSize = pcall(GetBoundingBox, Data.BoxParts)
+            if Ok and BoxCFrame and BoxSize then
+                Data.BoxCenter, Data.BoxSize = BoxCFrame.Position, BoxSize
+            end
+        end
+    end
+end
+
+function Module.Function:Render()
+    if not Library.Flags["Enabled"] then return end
+    if not (Library.Flags["Render Names"] or Library.Flags["Render Box"] or Library.Flags["Render Turret Ammo"] or Library.Flags["Render Hull Ammo"]) then return end
+
+    for _, Data in Module.Stored.Targets do
+        if not Data.Enemy then continue end
+
+        if Library.Flags["Render Turret Ammo"] and Data.TurretCount > 0 then
+            Module.Function:DrawAmmoHull(Data.TurretCorners, Data.TurretCount, Library.Flags["Turret Ammo Color"])
+        end
+
+        if Library.Flags["Render Hull Ammo"] and Data.HullCount > 0 then
+            Module.Function:DrawAmmoHull(Data.HullCorners, Data.HullCount, Library.Flags["Hull Ammo Color"])
+        end
+
+        if (Library.Flags["Render Box"] or Library.Flags["Render Names"]) and Data.BoxCenter then
+            local Position, Size = Module.Function:WorldBoxToScreen(Data.BoxCenter, Data.BoxSize)
 
             if Position then
-                if Flags["Render Box"] then
-                    local BoxColor = Flags["Box Color"].Color
-                    local BoxAlpha = Flags["Box Color"].Alpha
+                if Library.Flags["Render Box"] then
+                    local BoxColor = Library.Flags["Box Color"].Color
+                    local BoxAlpha = Library.Flags["Box Color"].Alpha
 
-                    if Flags["Box Outline"] then
+                    if Library.Flags["Box Outline"] then
                         local Thickness = 1
                         DrawingImmediate.Rectangle(Vector2.new(Position.X - Thickness, Position.Y - Thickness), Vector2.new(Size.X + Thickness * 2, Size.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
                         DrawingImmediate.Rectangle(Vector2.new(Position.X + Thickness, Position.Y + Thickness), Vector2.new(Size.X - Thickness * 2, Size.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
@@ -580,9 +569,9 @@ function Module.Function.Render()
                     end
                 end
 
-                if Flags["Render Names"] then
+                if Library.Flags["Render Names"] then
                     local NamePosition = Vector2.new(Position.X + Size.X * 0.5, Position.Y - 15)
-                    DrawingImmediate.OutlinedText(NamePosition, 13, Flags["Name Color"].Color, Flags["Name Color"].Alpha, Entry.Name, true, Library.Font)
+                    DrawingImmediate.OutlinedText(NamePosition, 13, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Data.Name, true, "Avant")
                 end
             end
         end
@@ -594,21 +583,24 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 
-task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
-task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRenderTargets) end end)
-task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
+task.spawn(function()
+    while true do
+        task.wait(0.8)
+        Module.Function:Cache()
+        Module.Function:RefreshTargets()
+    end
+end)
 
 --[[
-function Module.Function.PostLocal()
+RunService.PostLocal:Connect(function()
     if Library.Flags["Force Penetration"] or Library.Flags["Force Speed"] then
         local LocalHull = Module.Function:GetLocalHull()
         if LocalHull then
             Module.Function:SetValues(LocalHull)
         end
-    end
-end
-
-RunService.PostLocal:Connect(Module.Function.PostLocal)
+    end 
+end)
 ]]
 
-RunService.Render:Connect(Module.Function.Render)
+RunService.PostLocal:Connect(Module.Function.UpdateTargets)
+RunService.Render:Connect(function() Module.Function:Render() end)
