@@ -2,7 +2,6 @@
 
 local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
@@ -16,10 +15,6 @@ local Module = {
     
     Stored = {
         Entities = {},
-
-        -- Render cache: filled outside RunService.Render, only read inside it.
-        RenderTargets = {}, -- { Animal, RootPart, Parts, Name } (every 0.25s)
-        RenderCache = {},   -- { BoxCFrame, BoxSize, Name } (every tick)
     }
 }
 
@@ -66,8 +61,7 @@ function Module.Function:GetEntityParts(Entity)
     return Parts, Count
 end
 
-function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
-    local Center = BoxCFrame.Position
+function Module.Function:WorldBoxToScreen(Center, BoxSize)
     local HX, HY, HZ = BoxSize.X * 0.5, BoxSize.Y * 0.5, BoxSize.Z * 0.5
     local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
     local OnScreen = false
@@ -87,108 +81,97 @@ function Module.Function:WorldBoxToScreen(BoxCFrame, BoxSize)
     return Vector2.new(MinX, MinY), Vector2.new(MaxX - MinX, MaxY - MinY)
 end
 
+function Module.Function:IsRenderedForMe(Animal)
+    local Rendered = Animal:FindFirstChild("RenderedBy")
+    return Rendered ~= nil and Rendered:FindFirstChild(LocalPlayer.Name) ~= nil
+end
+
 function Module.Function:Cache()
     if not LocalPlayer then return nil end
     if not Module.Game.Animals then return nil end
+
+    local Entities = Module.Stored.Entities
     local Current = {}
 
     for _, Animal in Module.Game.Animals:GetChildren() do
-        if Animal and Animal:IsA("Model") then
-            local Rendered = Animal:FindFirstChild("RenderedBy")
-            if Rendered:FindFirstChild(LocalPlayer.Name) then
-                Current[Animal] = true
+        if Animal and Animal:IsA("Model") and Module.Function:IsRenderedForMe(Animal) then
+            Current[Animal] = true
 
-                if not Module.Stored.Entities[Animal] then
-                    Module.Stored.Entities[Animal] = Animal
-                end
+            local Data = Entities[Animal]
+            if not Data then
+                Data = {}
+                Entities[Animal] = Data
             end
+
+            Data.Root = Animal:FindFirstChild("HumanoidRootPart")
+            Data.Parts, Data.PartCount = Module.Function:GetEntityParts(Animal)
+            Data.Name = Animal:GetAttribute("RealFileName")
         end
     end
 
-    for Instance in pairs(Module.Stored.Entities) do
-        local Rendered = Instance:FindFirstChild("RenderedBy")
-        if not Current[Instance] or not Rendered:FindFirstChild(LocalPlayer.Name) then
-            Module.Stored.Entities[Instance] = nil
+    for Animal in pairs(Entities) do
+        if not Current[Animal] then
+            Entities[Animal] = nil
         end
     end
 end
 
--- // Render Cache \\ --
--- Everything that touches the game (GetChildren, FindFirstChild, attributes,
--- positions, bounding boxes) happens here, outside RunService.Render.
+function Module.Function.UpdateTargets()
+    Camera = Workspace.CurrentCamera or Camera
 
-function Module.Function.UpdateRenderTargets()
-    local Targets = {}
-
-    if Library.Flags["Render Boxes"] or Library.Flags["Render Names"] then
-        for _, Animal in pairs(Module.Stored.Entities) do
-            local RootPart = Animal and Animal:FindFirstChild("HumanoidRootPart")
-            if not RootPart then continue end
-
-            local Parts, Count = Module.Function:GetEntityParts(Animal)
-            if Count > 0 then
-                Targets[#Targets + 1] = {
-                    Animal = Animal,
-                    RootPart = RootPart,
-                    Parts = Parts,
-                    Name = Animal:GetAttribute("RealFileName"),
-                }
-            end
-        end
-    end
-
-    Module.Stored.RenderTargets = Targets
-end
-
-function Module.Function.UpdateRenderCache()
-    local Cache = {}
+    if not (Library.Flags["Render Boxes"] or Library.Flags["Render Names"]) then return end
 
     local Character = LocalPlayer and LocalPlayer.Character
-    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+    local MyRoot = Character and Character:FindFirstChild("HumanoidRootPart")
+    local MyPosition = MyRoot and MyRoot.Position
 
-    if HumanoidRootPart then
-        local UseMaximum = Library.Flags["Use Maximum Render"]
-        local Maximum = Library.Flags["Maximum Render"].Value
+    local UseMaximum = Library.Flags["Use Maximum Render"]
+    local Maximum = Library.Flags["Maximum Render"].Value
 
-        for _, Target in Module.Stored.RenderTargets do
-            if not Target.RootPart.Parent then continue end
-            if UseMaximum and vector.magnitude(Target.RootPart.Position - HumanoidRootPart.Position) >= Maximum then continue end
+    for Animal, Data in Module.Stored.Entities do
+        Data.Center, Data.Size = nil, nil
 
-            local BoxCFrame, BoxSize = GetBoundingBox(Target.Parts)
-            if BoxCFrame then
-                Cache[#Cache + 1] = { BoxCFrame = BoxCFrame, BoxSize = BoxSize, Name = Target.Name }
+        local Root = Data.Root
+        if not MyPosition or not Root or not Root.Parent or not Animal.Parent then continue end
+
+        if UseMaximum and vector.magnitude(Root.Position - MyPosition) >= Maximum then continue end
+
+        if Data.PartCount > 0 then
+            local Ok, Box, WorldSize = pcall(GetBoundingBox, Data.Parts)
+            if Ok and Box and WorldSize then
+                Data.Center, Data.Size = Box.Position, WorldSize
             end
         end
     end
-
-    Module.Stored.RenderCache = Cache
 end
 
--- // Render \\ --
--- Only iterates the render cache and draws with DrawingImmediate.
-
 function Module.Function.Render()
-    local Flags = Library.Flags
+    local ShowBoxes = Library.Flags["Render Boxes"]
+    local ShowNames = Library.Flags["Render Names"]
+    if not (ShowBoxes or ShowNames) then return end
 
-    for _, Entry in Module.Stored.RenderCache do
-        local BoxPosition, BoxSize = Module.Function:WorldBoxToScreen(Entry.BoxCFrame, Entry.BoxSize)
+    for _, Data in pairs(Module.Stored.Entities) do
+        if not Data.Center then continue end
+
+        local BoxPosition, BoxSize = Module.Function:WorldBoxToScreen(Data.Center, Data.Size)
         if BoxPosition and BoxSize then
             local ScaledSize = Vector2.new(BoxSize.X * 2, BoxSize.Y * 2)
+
             local ScaledPosition = Vector2.new(BoxPosition.X - (ScaledSize.X - BoxSize.X) * 0.5, BoxPosition.Y - (ScaledSize.Y - BoxSize.Y) * 0.5)
 
             local TopY = ScaledPosition.Y
             local CenterX = ScaledPosition.X + ScaledSize.X * 0.5
 
-            if Flags["Render Boxes"] then
+            if ShowBoxes then
                 local Thickness = 1
 
                 DrawingImmediate.Rectangle(Vector2.new(ScaledPosition.X - Thickness, ScaledPosition.Y - Thickness), Vector2.new(ScaledSize.X + Thickness * 2, ScaledSize.Y + Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
                 DrawingImmediate.Rectangle(Vector2.new(ScaledPosition.X + Thickness, ScaledPosition.Y + Thickness), Vector2.new(ScaledSize.X - Thickness * 2, ScaledSize.Y - Thickness * 2), Color3.fromRGB(0, 0, 0), 1, 1)
-                DrawingImmediate.Rectangle(ScaledPosition, ScaledSize, Flags["Box Color"].Color, Flags["Box Color"].Alpha, 1)
+                DrawingImmediate.Rectangle(ScaledPosition, ScaledSize, Library.Flags["Box Color"].Color, Library.Flags["Box Color"].Alpha, 1)
             end
 
-            if Flags["Render Names"] and Entry.Name then
-                DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Flags["Name Color"].Color, Flags["Name Color"].Alpha, Entry.Name, true, Library.Font)
+            if ShowNames and Data.Name then
+                DrawingImmediate.OutlinedText(Vector2.new(CenterX, TopY - 16), 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, Data.Name, true, "Proggy")
             end
         end
     end
@@ -208,6 +191,8 @@ end
 
 task.spawn(function()
     while true do
+        task.wait(1/15)
+
         if Library.Flags["Loop Ammunition"] then
             if not LocalPlayer then continue end
 
@@ -215,12 +200,9 @@ task.spawn(function()
             if not Character then continue end
 
             local Equipped = Character:FindFirstChild("Equiped")
-            if Equipped then
-                local Value = Equipped.Value.Name
-                local Weapon
-                if Equipped.Value.Name then
-                    Weapon = Character:FindFirstChild(Value)
-                end
+            local EquippedValue = Equipped and Equipped.Value
+            if EquippedValue then
+                local Weapon = Character:FindFirstChild(EquippedValue.Name)
                 if Weapon then
                     if Weapon:GetAttribute("MaxAmmo") ~= 600 then
                         Weapon:SetAttribute("MaxAmmo", 600)
@@ -232,7 +214,6 @@ task.spawn(function()
                 end
             end
         end
-        task.wait(1/15)
     end
 end)
 
@@ -242,6 +223,5 @@ Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigW
 PlayerSection:Button({Name = "Teleport to Skin Man", Callback = function() Module.Function:Teleport(Vector3.new(-34.342793, 7.000000, 83.419090)) Window:Notify("Teleported", 2) end})
 PlayerSection:Button({Name = "Teleport to Meat Man", Callback = function() Module.Function:Teleport(Vector3.new(-26.730238, 3.601006, 11.802993)) Window:Notify("Teleported", 2) end})
 task.spawn(function() while true do task.wait(0.5) Module.Function:Cache() end end)
-task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRenderTargets) end end)
-task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
+RunService.PostLocal:Connect(Module.Function.UpdateTargets)
 RunService.Render:Connect(Module.Function.Render)
