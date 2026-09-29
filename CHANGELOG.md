@@ -118,5 +118,14 @@ Havoc
 ```
 Havoc
 
-- Removed Modifiers which Require Garbage Collector
+- Removed modifiers that require the garbage collector
+```
+
+9/28/26
+```
+- Removed Havoc Support
+
+Notoriety
+
++ Added Heist-Specific Features (Only Ozela for Now)
 ```
