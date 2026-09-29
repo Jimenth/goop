@@ -347,11 +347,27 @@ local Library do
 
     -- // Draw Helpers \\ --
 
+    -- Vertical clip region, set only while a page renders (see Pages:Render).
+    -- Retained drawings have no real clipping, so rects are trimmed to the
+    -- region, text outside it is skipped, and elements are culled whole.
+    local ClipTop, ClipBottom = nil, nil
+
     local function DrawRect(X, Y, W, H, Color, Opacity)
         local Scope = CurrentScope
         if not Scope then return end
         -- Skip degenerate rects (NaN or non-positive size).
         if X ~= X or Y ~= Y or W ~= W or H ~= H or W <= 0 or H <= 0 then return end
+
+        if ClipTop then
+            if Y < ClipTop then
+                H = H - (ClipTop - Y)
+                Y = ClipTop
+            end
+            if Y + H > ClipBottom then
+                H = ClipBottom - Y
+            end
+            if H <= 0 then return end
+        end
 
         Scope.Order = Scope.Order + 1
         local Index = Scope.SquareCount + 1
@@ -389,6 +405,7 @@ local Library do
         local Scope = CurrentScope
         if not Scope then return end
         if X ~= X or Y ~= Y then return end
+        if ClipTop and (Y < ClipTop or Y + (Size or Library.FontSize) > ClipBottom) then return end
 
         Scope.Order = Scope.Order + 1
         local Index = Scope.TextCount + 1
@@ -579,6 +596,10 @@ local Library do
 
     function Library:IsHovering(X, Y, Width, Height)
         local Input = self.Input
+        -- Anything clipped out of the current page can't be hovered or clicked.
+        if ClipTop and (Input.MouseY < ClipTop or Input.MouseY > ClipBottom) then
+            return false
+        end
         return Input.MouseX >= X and Input.MouseX <= X + Width
             and Input.MouseY >= Y and Input.MouseY <= Y + Height
     end
@@ -1250,6 +1271,34 @@ local Library do
         return AttachKeyPicker(Host, self, Data)
     end
 
+    -- Renders one element of a section at CursorY, unless it isn't fully inside
+    -- the current clip region (page scroll) or the optional ViewTop/ViewBottom
+    -- (a ScrollableSection's own view). Elements are never drawn partially.
+    -- A dropdown or key-picker menu belonging to a culled element is closed so it
+    -- can't linger at a stale position.
+    local function RenderSectionElement(Element, CursorX, CursorY, InnerWidth, RightEdge, ViewTop, ViewBottom)
+        local Bottom = CursorY + Element.Height
+        local Visible = (not ViewTop or (CursorY >= ViewTop and Bottom <= ViewBottom))
+            and (not ClipTop or (CursorY >= ClipTop and Bottom <= ClipBottom))
+
+        if Visible then
+            Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
+            Element.SectionRightEdge = RightEdge
+            WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
+            return
+        end
+
+        if Library.ActiveDropdown == Element then
+            Element.Open = false
+            Library.ActiveDropdown = nil
+        end
+        local Context = Library.KeyPickerContext
+        if Context and (Context.Element == Element or Context.Element == Element.AttachedKeyPicker) then
+            Context.Element.ContextOpen = false
+            Library.KeyPickerContext = nil
+        end
+    end
+
     function Sections:GetContentHeight()
         local TotalHeight = Library.Layout.SectionHeaderHeight
         if self.AttachedKeyPicker or #self.AttachedColorPickers > 0 then
@@ -1286,16 +1335,16 @@ local Library do
         -- row below the header, lining up with where Toggles begin.
         if self.AttachedKeyPicker or #self.AttachedColorPickers > 0 then
             local RowH = Library.Layout.SectionPickerRowHeight
-            local BadgeY = CursorY + MathFloor((RowH - 13) / 2)
-            RenderAttachedPickers(self, CursorX, BadgeY, true)
+            if not ClipTop or (CursorY >= ClipTop and CursorY + RowH <= ClipBottom) then
+                local BadgeY = CursorY + MathFloor((RowH - 13) / 2)
+                RenderAttachedPickers(self, CursorX, BadgeY, true)
+            end
             CursorY = CursorY + RowH
         end
 
         for _, Element in self.Elements do
             if not Element.Hidden then
-                Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
-                Element.SectionRightEdge = SectionRightEdge
-                WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
+                RenderSectionElement(Element, CursorX, CursorY, InnerWidth, SectionRightEdge)
                 CursorY = CursorY + Element.Height
             end
         end
@@ -1323,21 +1372,6 @@ local Library do
     end
 
     function Pages:Section(Data)
-        -- A page holds at most 2 *regular* sections; extras fold into the last one.
-        -- MultiSection/ScrollableSection entries (and MultiSection sub-sections) are
-        -- registered in self.Sections too, so they're excluded from the count and the
-        -- fold target — otherwise a :Section after a :MultiSection would fold into the
-        -- wrong object.
-        local RegularCount, LastRegular = 0, nil
-        for _, Section in self.Sections do
-            if not Section.MultiSection and not Section.IsMultiSection and not Section.Scrollable then
-                RegularCount = RegularCount + 1
-                LastRegular = Section
-            end
-        end
-        if RegularCount >= 2 then
-            return LastRegular
-        end
         return CreateSection(self, Data or { })
     end
 
@@ -1361,6 +1395,10 @@ local Library do
             AttachedKeyPicker = nil,
             X = 0, Y = 0, Width = 0, Height = 0,
         }, Sections)
+
+        function Section:GetContentHeight()
+            return self.Size
+        end
 
         function Section:Render(X, Y, Width)
             self.X, self.Y, self.Width = X, Y, Width
@@ -1397,11 +1435,7 @@ local Library do
             local CursorY = ContentTop - self.ScrollOffset
             for _, Element in self.Elements do
                 if not Element.Hidden then
-                    if CursorY >= ContentTop and CursorY + Element.Height <= ContentBottom then
-                        Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
-                        Element.SectionRightEdge = SectionRightEdge
-                        WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
-                    end
+                    RenderSectionElement(Element, CursorX, CursorY, InnerWidth, SectionRightEdge, ContentTop, ContentBottom)
                     CursorY = CursorY + Element.Height
                 end
             end
@@ -1474,6 +1508,16 @@ local Library do
             self.Sections[#self.Sections + 1] = Sub
         end
 
+        function Multi:GetContentHeight()
+            local ContentHeight = 0
+            for _, Element in self.Tabs[self.Active].Elements do
+                if not Element.Hidden then
+                    ContentHeight = ContentHeight + Element.Height
+                end
+            end
+            return 28 + ContentHeight + Library.Layout.SectionInnerPadding
+        end
+
         function Multi:Render(X, Y, Width)
             self.X, self.Y, self.Width = X, Y, Width
 
@@ -1482,14 +1526,7 @@ local Library do
             local StripHeight = TabRowHeight - 4
 
             local ActiveSection = self.Tabs[self.Active]
-            local ContentHeight = 0
-            for _, Element in ActiveSection.Elements do
-                if not Element.Hidden then
-                    ContentHeight = ContentHeight + Element.Height
-                end
-            end
-
-            self.Height = TabRowHeight + ContentHeight + Padding
+            self.Height = self:GetContentHeight()
 
             -- Frame. The content fill spans everything, so the active tab (which
             -- keeps this fill) blends straight into the panel below it.
@@ -1540,9 +1577,7 @@ local Library do
 
             for _, Element in ActiveSection.Elements do
                 if not Element.Hidden then
-                    Element.X, Element.Y, Element.Width = CursorX, CursorY, InnerWidth
-                    Element.SectionRightEdge = SectionRightEdge
-                    WithScope(Element, Library.CurrentWindowZ + Z.Element, Element.Render, Element)
+                    RenderSectionElement(Element, CursorX, CursorY, InnerWidth, SectionRightEdge)
                     CursorY = CursorY + Element.Height
                 end
             end
@@ -1552,28 +1587,92 @@ local Library do
         return TableUnpack(Multi.Tabs)
     end
 
+    -- Sections stack top-to-bottom in their column (Side), in creation order,
+    -- SectionGap apart. Every section's height is measured before anything is
+    -- drawn, so positions never depend on the previous frame. If the tallest
+    -- column doesn't fit, the page scrolls: a thumb appears in the right-hand
+    -- padding (so column widths never change) and everything is clipped to the
+    -- page area.
+    local function SectionHeight(Section)
+        return Section:GetContentHeight()
+    end
+
     function Pages:Render(X, Y, Width, Height)
-        local Columns = self.Columns
+        local Columns = MathMax(1, self.Columns)
         local Pad = Library.Layout.SectionPadding
+        local Gap = Library.Layout.SectionGap
         local MiddleGap = Library.Layout.SectionMiddleGap
         local ColumnWidth = MathFloor((Width - Pad * 2 - (Columns - 1) * MiddleGap) / Columns)
 
-        local ColumnCursorY = { }
+        local ViewTop = Y + Pad
+        local ViewBottom = Y + Height - Pad
+        local ViewHeight = ViewBottom - ViewTop
+
+        -- Pass 1: lay out every section (column + offset from the top of the view).
+        local Layout = { }
+        local ColumnHeight = { }
         for Col = 1, Columns do
-            ColumnCursorY[Col] = Y + Pad
+            ColumnHeight[Col] = 0
         end
 
         for _, Section in self.Sections do
             -- MultiSection sub-sections are drawn by their container, not directly.
             if not Section.MultiSection then
                 local Col = MathClamp(Section.Side or 1, 1, Columns)
-                local ColX = X + Pad + (Col - 1) * (ColumnWidth + MiddleGap)
-                local SecY = ColumnCursorY[Col]
-
-                WithScope(Section, Library.CurrentWindowZ + Z.Section, Section.Render, Section, ColX, SecY, ColumnWidth)
-                ColumnCursorY[Col] = SecY + Section.Height + Library.Layout.SectionGap
+                local Offset = ColumnHeight[Col]
+                if Offset > 0 then
+                    Offset = Offset + Gap
+                end
+                local SecHeight = SectionHeight(Section)
+                Layout[#Layout + 1] = { Section = Section, Col = Col, Offset = Offset }
+                ColumnHeight[Col] = Offset + SecHeight
             end
         end
+
+        local ContentHeight = 0
+        for Col = 1, Columns do
+            ContentHeight = MathMax(ContentHeight, ColumnHeight[Col])
+        end
+
+        -- Page scroll (only when the tallest column overflows).
+        local MaxScroll = MathMax(0, ContentHeight - ViewHeight)
+        self.ScrollOffset = MathClamp(self.ScrollOffset or 0, 0, MaxScroll)
+        if MaxScroll == 0 then
+            self.ScrollDragging = false
+        else
+            local TrackX = X + Width - 5
+            local ThumbHeight = MathMax(20, MathFloor(ViewHeight * (ViewHeight / ContentHeight)))
+
+            if Library.Input.MouseClicked and not Library.Input.Consumed and Library:IsHovering(TrackX - 2, ViewTop, 8, ViewHeight) then
+                self.ScrollDragging = true
+                Library.Input.Consumed = true
+            end
+            if not Library.Input.MouseDown then self.ScrollDragging = false end
+            if self.ScrollDragging then
+                local Fraction = MathClamp((Library.Input.MouseY - ViewTop - ThumbHeight / 2) / MathMax(1, ViewHeight - ThumbHeight), 0, 1)
+                self.ScrollOffset = MathFloor(Fraction * MaxScroll + 0.5)
+            end
+
+            local ThumbY = ViewTop + MathFloor((ViewHeight - ThumbHeight) * (self.ScrollOffset / MaxScroll))
+            local Hovered = self.ScrollDragging or Library:IsHovering(TrackX - 2, ThumbY, 8, ThumbHeight)
+            DrawRect(TrackX, ViewTop, 3, ViewHeight, Theme["Black"])
+            DrawRect(TrackX, ThumbY, 3, ThumbHeight, Hovered and Theme["Accent"] or Theme["Border"])
+        end
+
+        -- Pass 2: draw, clipped to the page view.
+        ClipTop, ClipBottom = ViewTop, ViewBottom
+        for _, Entry in Layout do
+            local Section = Entry.Section
+            local ColX = X + Pad + (Entry.Col - 1) * (ColumnWidth + MiddleGap)
+            local SecY = ViewTop + Entry.Offset - self.ScrollOffset
+            WithScope(Section, Library.CurrentWindowZ + Z.Section, Section.Render, Section, ColX, SecY, ColumnWidth)
+        end
+        ClipTop, ClipBottom = nil, nil
+    end
+
+    -- Clears the page clip region (used if a render errors part-way through).
+    Library.ResetClip = function()
+        ClipTop, ClipBottom = nil, nil
     end
 
     -- // Windows \\ --
@@ -3171,6 +3270,7 @@ local Library do
         local Ok, Err = pcall(Callback, ...)
         if not Ok then
             ResetScopeStack()
+            Library.ResetClip()
             print("[Interface] " .. Label .. " render error: " .. tostring(Err))
         end
     end
