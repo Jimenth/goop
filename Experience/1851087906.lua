@@ -1,7 +1,6 @@
 -- // Service and Module \\ --
 
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 
 local Camera = workspace.CurrentCamera
 
@@ -16,11 +15,7 @@ local Module = {
     
     Stored = {
         Entities = {},
-        Dead = {},
-
-        -- Render cache: filled outside RunService.Render, only read inside it.
-        RenderTargets = {}, -- { RootPart, Text } (every 0.25s)
-        RenderCache = {},   -- { Position, Text } (every tick)
+        Dead = {}
     }
 }
 
@@ -159,56 +154,26 @@ function Module.Function:AnimalData(Animal, Parts)
     return tostring(Animal), Data
 end
 
--- // Render Cache \\ --
--- Everything that touches the game (FindFirstChild, attributes, positions)
--- happens here, outside RunService.Render.
-
-function Module.Function.UpdateRenderTargets()
-    local Targets = {}
-
-    if Library.Flags["Render Dead"] then
-        for _, Animal in pairs(Module.Stored.Dead) do
-            local RootPart = Animal and Animal:FindFirstChild("RootPart")
-            if not RootPart then continue end
-
-            local Text
-            if Library.Flags["Display Gender"] then
-                Text = "Dead " .. tostring(Animal:GetAttribute("Sex")) .. " " .. tostring(Animal:GetAttribute("DisplayName"))
-            else
-                Text = "Dead " .. tostring(Animal:GetAttribute("DisplayName"))
-            end
-
-            Targets[#Targets + 1] = { RootPart = RootPart, Text = Text }
-        end
-    end
-
-    Module.Stored.RenderTargets = Targets
-end
-
-function Module.Function.UpdateRenderCache()
-    local Cache = {}
-
-    for _, Target in Module.Stored.RenderTargets do
-        if Target.RootPart.Parent then
-            Cache[#Cache + 1] = { Position = Target.RootPart.Position, Text = Target.Text }
-        end
-    end
-
-    Module.Stored.RenderCache = Cache
-end
-
--- // Render \\ --
--- Only iterates the render cache and draws with DrawingImmediate.
-
 function Module.Function.Render()
-    if not Library.Flags["Render Dead"] then return end
+    if not Library.Flags["Render Dead"] then return end 
 
-    local Color = Library.Flags["Name Color"]
+    for _, Animal in pairs(Module.Stored.Dead) do
+        if Animal and Animal:FindFirstChild("RootPart") then
+            local HumanoidRootPart = Animal:FindFirstChild("RootPart")
+            if Library.Flags["Render Dead"] then
+                local RealName
 
-    for _, Entry in Module.Stored.RenderCache do
-        local Screen, OnScreen = Camera:WorldToScreenPoint(Entry.Position)
-        if OnScreen then
-            DrawingImmediate.OutlinedText(Screen, 14, Color.Color, Color.Alpha, Entry.Text, true, Library.Font)
+                if Library.Flags["Display Gender"] then
+                    RealName = "Dead ".. Animal:GetAttribute("Sex").. " ".. Animal:GetAttribute("DisplayName")
+                else
+                    RealName = "Dead ".. Animal:GetAttribute("DisplayName")
+                end
+                local Screen, OnScreen = Camera:WorldToScreenPoint(HumanoidRootPart.Position)
+
+                if OnScreen then
+                    DrawingImmediate.OutlinedText(Screen, 14, Library.Flags["Name Color"].Color, Library.Flags["Name Color"].Alpha, RealName, true, "Avant")
+                end
+            end            
         end
     end
 end
@@ -257,7 +222,5 @@ end
 Library:Watermark("Goop")
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 task.spawn(function() while true do task.wait(0.8) Module.Function:Cache() end end)
-task.spawn(function() while true do task.wait(0.25) pcall(Module.Function.UpdateRenderTargets) end end)
-task.spawn(function() while true do task.wait(0) pcall(Module.Function.UpdateRenderCache) end end)
 RunService.PostLocal:Connect(Module.Function.PostLocal)
 RunService.Render:Connect(Module.Function.Render)
