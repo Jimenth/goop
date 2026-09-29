@@ -1,7 +1,3 @@
-[Fallen Survival](https://www.roblox.com/games/10228136016/Fallen-Survival)
-
-[Project Delta](https://www.roblox.com/games/7336302630/Project-Delta)
-
 [Hunting Season](https://www.roblox.com/games/5286116071/Hunting-Season)
 
 [Foresto](https://www.roblox.com/games/12575645876/Foresto-Hunting-Game)
