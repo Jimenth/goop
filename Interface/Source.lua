@@ -1103,6 +1103,20 @@ local Library do
 
         function Label:SyncFlag() end
 
+        -- Changes the Label's text. Attached pickers keep showing the new name
+        -- in the Keybinds list.
+        function Label:SetText(Text)
+            Text = tostring(Text or "")
+            self.Name = Text
+
+            for _, Picker in self.AttachedColorPickers do
+                Picker.HostName = Text
+            end
+            if self.AttachedKeyPicker then
+                self.AttachedKeyPicker.HostName = Text
+            end
+        end
+
         function Label:Render()
             local X, Y = self.X, self.Y
             local AnchorRight = self.SectionRightEdge or (X + self.Width)
