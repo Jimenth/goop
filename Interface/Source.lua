@@ -74,7 +74,7 @@ local Library do
 
         Fonts = {
             Data = {
-                List = { "LilitaOne", "Tamzen", "Viga", "Pixel", "Proggy", "Avant", "Interum" },
+                List = { "Viga", "Proggy", "Avant" },
                 Fonts = { },
             },
         }
@@ -148,7 +148,7 @@ local Library do
     end
 
     Library.FontSize = 13
-    Library.Font = "LilitaOne"
+    Library.Font = "Avant"
 
     -- // Core \\ --
     local OutlineColor = vector.create(0, 0, 0)
