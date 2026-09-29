@@ -72,14 +72,17 @@ local Library do
             Configs = "Goop/" .. tostring(game.GameId) .. "/Configs",
         },
 
-        -- Built-in Drawing fonts (referenced by name). Custom font loading was removed.
         Fonts = {
             Data = {
-                List = { "LilitaOne" },
-                Fonts = { ["LilitaOne"] = true },
+                List = { "LilitaOne", "Tamzen", "Viga", "Pixel", "Proggy", "Avant", "Interum" },
+                Fonts = { },
             },
         }
     }
+
+    for _, Name in Library.Fonts.Data.List do
+        Library.Fonts.Data.Fonts[Name] = true
+    end
 
     Library.Camera = Camera
     Library.Viewport = Camera.ViewportSize * Library.DPIScale
@@ -3022,7 +3025,8 @@ local Library do
         local Height = Pad + ButtonSize + Pad + 4
 
         Library.NavigationBarData = {
-            X = Library.Viewport.X / 2 - Width / 2,
+            -- Whole pixels, so the buttons and their text snap to the same grid.
+            X = MathFloor(Library.Viewport.X / 2 - Width / 2),
             Y = 40,
             Width = Width,
             Height = Height,
@@ -3451,8 +3455,9 @@ local Library do
                     Active and Theme["Accent"] or (Hovered and Theme["Dark Background"] or Theme["Background"]))
 
                 local LabelColor = Active and Theme["White"] or (Hovered and Theme["Accent"] or Theme["Dim"])
+                -- Centred on the button, rounded to the nearest whole pixel.
                 local LabelBounds = GetTextBounds(Btn.Label)
-                DrawText(BX + MathFloor((BtnSize - LabelBounds.X) / 2), BY + MathFloor((BtnSize - LabelBounds.Y) / 2),
+                DrawText(BX + MathFloor((BtnSize - LabelBounds.X) / 2 + 0.5), BY + MathFloor((BtnSize - LabelBounds.Y) / 2 + 0.5),
                     Library.FontSize, LabelColor, Btn.Label)
 
                 if Library.Input.MouseClicked and Hovered and Btn.Window then
