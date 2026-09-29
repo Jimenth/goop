@@ -61,12 +61,12 @@ Creates a single Section frame split into tabbed sub-sections
 *Returns one handle per sub-section, in the order listed. Only the selected tab's Elements render; click a tab to switch. Each sub-section hosts the same Elements as a regular Section.*
 
 ```lua
-local Rage, Visuals = Page:MultiSection({
+local Ragebot, Originscan, Visuals = Page:MultiSection({
     Sections = {string},
     Side = number
 })
 
-Rage:Toggle({ Name = "Enabled", Flag = "RageEnabled" })
+Ragebot:Toggle({ Name = "Enabled", Flag = "RageEnabled" })
 Visuals:Slider({ Name = "FOV", Min = 0, Max = 180, Default = 90 })
 ```
 
@@ -192,6 +192,22 @@ local Label = Section:Label({
 })
 ```
 
+**Label:SetText |**
+Updates the text of an existing Label
+
+*Takes effect on the next frame. Non-string values are converted with `tostring` (`nil` becomes an empty string). Any attached KeyPicker shows the new text in the Keybinds list.*
+
+```lua
+Label:SetText(string)
+```
+
+```lua
+local Status = Section:Label({ Name = "Status: Idle" })
+
+-- later, e.g. from a Toggle's Callback
+Status:SetText("Status: Running")
+```
+
 ***Attached Pickers***
 
 *ColorPickers and KeyPickers can be attached as small badges to a Toggle, a Label, or directly to a Section header. Limits per host: up to 2 ColorPickers and 1 KeyPicker.*
@@ -248,18 +264,6 @@ Library:NavigationBar(Library.Windows[1], StyleWin, ConfigWin)
 
 ```lua
 Window:Notify(string, number)
-```
-
-**Watermark |**
-
-```lua
-Library:Watermark(string)
-```
-
-**Group List |**
-*Just a Moderator List, expects group ID and Rank Names*
-```lua
-Library:GroupList(number, table)
 ```
 
 ***Flags & Configs***
