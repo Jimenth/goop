@@ -482,7 +482,8 @@ local Global = {
                 TeamColor = Offsets.SpawnLocation.TeamColor,
             },
             Team = {
-                BrickColor = Offsets.Team.BrickColor,
+                -- The source names this offset TeamColor (it's the BrickColor number).
+                BrickColor = Offsets.Team.TeamColor,
             },
         },
 
@@ -576,7 +577,7 @@ local Global = {
                 ReferenceInstance = Offsets.DragDetector.ReferenceInstance,
             },
             Player = {
-                ModelInstance = Offsets.Player.ModelInstance,
+                ModelInstance = Offsets.Player.Character, -- the source's name for this offset
                 Mouse = { Offset = Offsets.Player.Mouse, ReadOnly = true },
             },
             Seat = {
@@ -631,7 +632,7 @@ local Global = {
             },
             ProximityPrompt = {
                 GamepadKeyCode = { Offset = Offsets.ProximityPrompt.GamepadKeyCode, EnumType = Enum.KeyCode },
-                KeyCode = { Offset = Offsets.ProximityPrompt.KeyCode, EnumType = Enum.KeyCode },
+                KeyCode = { Offset = Offsets.ProximityPrompt.KeyboardKeyCode, EnumType = Enum.KeyCode }, -- same offset as KeyboardKeyCode
                 KeyboardKeyCode = { Offset = Offsets.ProximityPrompt.KeyboardKeyCode, EnumType = Enum.KeyCode },
             },
             TextLabel = {
@@ -666,7 +667,7 @@ local Global = {
             AssemblyAngularVelocity = Offsets.Primitive.AssemblyAngularVelocity,
         },
         Reference = {
-            Owner = Offsets.Primitive.Owner,
+            Owner = Offsets.Primitive.Part, -- the source's name for this offset
         },
         Flags = {
             Anchored = Offsets.PrimitiveFlags.Anchored,
@@ -1042,14 +1043,14 @@ function Global.Function:DeclarePrimitiveFlags(Fields)
                 if Primitive == 0 then
                     return nil
                 end
-                return bit32.band(memory.readu8(Primitive + Offsets.Primitive.Flags), Mask) ~= 0
+                return bit32.band(memory.readu8(Primitive + Offsets.Primitive.PrimitiveFlags), Mask) ~= 0
             end,
             set = function(self, Value)
                 local Primitive = Global.Function:GetPrimitive(self)
                 if Primitive == 0 then
                     return
                 end
-                local Address = Primitive + Offsets.Primitive.Flags
+                local Address = Primitive + Offsets.Primitive.PrimitiveFlags
                 local Bits = memory.readu8(Address)
                 if Value then
                     Bits = bit32.bor(Bits, Mask)
@@ -1176,13 +1177,13 @@ local function DeclareByteCode(Class, BytecodeOffset)
     })
 end
 
-DeclareByteCode("LocalScript", Offsets.LocalScript.Bytecode)
-DeclareByteCode("ModuleScript", Offsets.ModuleScript.Bytecode)
+DeclareByteCode("LocalScript", Offsets.LocalScript.ByteCode)
+DeclareByteCode("ModuleScript", Offsets.ModuleScript.ByteCode)
 -- Script's own dumped ByteCode offset is 0x0 -- the same address a C++
 -- object's vtable pointer normally occupies. Reading and dereferencing that
 -- blindly is a real crash risk (unlike every other offset in this file), so
 -- it's deliberately left unimplemented here. LocalScript/ModuleScript instead
--- have a separate, distinctly non-zero `Bytecode` field that doesn't have
+-- have a separate, distinctly non-zero `ByteCode` field that doesn't have
 -- this problem -- if a trustworthy offset for plain Script ever turns up,
 -- this is a one-line addition.
 
@@ -1245,13 +1246,13 @@ Global.Function:DeclareChain("Workspace", { Offsets.Workspace.World },
     function(Address, Value) Global.Function:WriteFloatAbsolute(Address, Value) end)
 
 -- Team.TeamColor -- a Color3 view of the BrickColor palette number (Team.BrickColor
--- returns the BrickColor itself). Both read/write the same offset.
+-- returns the BrickColor itself). Both read/write the source's Team.TeamColor offset.
 Global.Function:Declare("Team", "TeamColor", {
     get = function(self)
-        return BrickColor.new(memory.readi32(self.Data, Offsets.Team.BrickColor)).Color
+        return BrickColor.new(memory.readi32(self.Data, Offsets.Team.TeamColor)).Color
     end,
     set = function(self, Value)
-        memory.writei32(self.Data, Offsets.Team.BrickColor, Global.Function:ToBrickColorNumber(Value))
+        memory.writei32(self.Data, Offsets.Team.TeamColor, Global.Function:ToBrickColorNumber(Value))
     end,
 })
 
@@ -1354,7 +1355,7 @@ Instance.declare({ class = "Humanoid", name = "MoveTo", callback = {
                 if math.abs(Current.X - Position.X) <= 1 and math.abs(Current.Z - Position.Z) <= 1 then
                     break
                 end
-                memory.writevector(self, Offsets.Humanoid.MoveToPoint, Position)
+                memory.writevector(self, Offsets.Humanoid.WalkToPoint, Position)
                 memory.writeu8(self, Offsets.Humanoid.IsWalking, 1)
                 task.wait()
             end
