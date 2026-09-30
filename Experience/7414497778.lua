@@ -17,7 +17,11 @@ local Module = {
     Stored = {
         Vehicles = {},
         Drones = {},
-        Armor = {}
+        Armor = {},
+
+        Viewport = Workspace.CurrentCamera.ViewportSize,
+        LocalTeam = nil,
+        TeamCheck = false
     }
 }
 
@@ -141,68 +145,64 @@ function Module.Function:CalculateConvexHull(Points, PointCount, Outer)
     return Size - 1
 end
 
-function Module.Function:ProjectPartCorners(Part, WriteOffset)
-    if not (Part and Part:IsA("BasePart")) then
-        return WriteOffset
+function Module.Function:CollectPartCorners(Parts, Out)
+    local Count = 0
+
+    for _, Part in Parts do
+        if not (Part and Part.Parent and Part:IsA("BasePart")) then continue end
+
+        local Position = Part.Position
+        local Size = Part.Size
+        local PartCFrame = Part.CFrame
+
+        local HalfSizeX = Size.X * 0.5
+        local HalfSizeY = Size.Y * 0.5
+        local HalfSizeZ = Size.Z * 0.5
+
+        local RightVector = PartCFrame.RightVector
+        local UpVector = PartCFrame.UpVector
+        local LookVector = PartCFrame.LookVector
+
+        local RightX, RightY, RightZ = RightVector.X * HalfSizeX, RightVector.Y * HalfSizeX, RightVector.Z * HalfSizeX
+        local UpX, UpY, UpZ = UpVector.X * HalfSizeY, UpVector.Y * HalfSizeY, UpVector.Z * HalfSizeY
+        local LookX, LookY, LookZ = LookVector.X * HalfSizeZ, LookVector.Y * HalfSizeZ, LookVector.Z * HalfSizeZ
+
+        for SignR = -1, 1, 2 do
+            for SignU = -1, 1, 2 do
+                for SignL = -1, 1, 2 do
+                    Count = Count + 1
+                    Out[Count] = Vector3New(
+                        Position.X + SignR * RightX + SignU * UpX + SignL * LookX,
+                        Position.Y + SignR * RightY + SignU * UpY + SignL * LookY,
+                        Position.Z + SignR * RightZ + SignU * UpZ + SignL * LookZ
+                    )
+                end
+            end
+        end
     end
 
-    local PartCFrame = Part.CFrame
-    local Position = PartCFrame.Position
-    local Size = Part.Size
+    for Index = Count + 1, #Out do
+        Out[Index] = nil
+    end
 
-    local PositionX = Position.X
-    local PositionY = Position.Y
-    local PositionZ = Position.Z
+    return Count
+end
 
-    local HalfSizeX = Size.X * 0.5
-    local HalfSizeY = Size.Y * 0.5
-    local HalfSizeZ = Size.Z * 0.5
+function Module.Function:ProjectCorners(Corners, Count, WriteOffset)
+    local Points = Convex.Scratch.Points
 
-    local RightVector = PartCFrame.RightVector
-    local UpVector = PartCFrame.UpVector
-    local LookVector = PartCFrame.LookVector
-
-    local RightX = RightVector.X * HalfSizeX
-    local RightY = RightVector.Y * HalfSizeX
-    local RightZ = RightVector.Z * HalfSizeX
-
-    local UpX = UpVector.X * HalfSizeY
-    local UpY = UpVector.Y * HalfSizeY
-    local UpZ = UpVector.Z * HalfSizeY
-
-    local LookX = LookVector.X * HalfSizeZ
-    local LookY = LookVector.Y * HalfSizeZ
-    local LookZ = LookVector.Z * HalfSizeZ
-
-    local SignR = 1
-    for _ = 1, 2 do
-        local SignU = 1
-        for _ = 1, 2 do
-            local SignL = 1
-            for _ = 1, 2 do
-                local WorldPoint = Vector3New(
-                    PositionX + SignR * RightX + SignU * UpX + SignL * LookX,
-                    PositionY + SignR * RightY + SignU * UpY + SignL * LookY,
-                    PositionZ + SignR * RightZ + SignU * UpZ + SignL * LookZ
-                )
-
-                local ScreenPoint, OnScreen = Camera:WorldToScreenPoint(WorldPoint)
-                if OnScreen then
-                    WriteOffset = WriteOffset + 1
-                    local Slot = Convex.Scratch.Points[WriteOffset]
-                    if Slot then
-                        Slot.X = ScreenPoint.X
-                        Slot.Y = ScreenPoint.Y
-                    else
-                        Convex.Scratch.Points[WriteOffset] = {X = ScreenPoint.X, Y = ScreenPoint.Y}
-                    end
-                end
-
-                SignL = -1
+    for Index = 1, Count do
+        local ScreenPoint, OnScreen = Camera:WorldToScreenPoint(Corners[Index])
+        if OnScreen then
+            WriteOffset = WriteOffset + 1
+            local Slot = Points[WriteOffset]
+            if Slot then
+                Slot.X = ScreenPoint.X
+                Slot.Y = ScreenPoint.Y
+            else
+                Points[WriteOffset] = {X = ScreenPoint.X, Y = ScreenPoint.Y}
             end
-            SignU = -1
         end
-        SignR = -1
     end
 
     return WriteOffset
@@ -281,9 +281,13 @@ function Module.Function:CacheVehicle(Vehicle)
         Vehicles[Identifier] = {
             Vehicle = Vehicle,
             PrimaryPart = Vehicle.PrimaryPart,
+            Name = Vehicle.Name,
             Groups = nil,
             Occupied = false,
-            Team = Module.Function:GetVehicleTeam(Vehicle)
+            Team = Module.Function:GetVehicleTeam(Vehicle),
+
+            Position = nil,
+            DistanceText = nil
         }
 
         task.delay(1, function()
@@ -311,7 +315,9 @@ function Module.Function:CacheVehicle(Vehicle)
                     if EnginePart then
                         Groups[#Groups + 1] = {
                             Type = "Engine",
-                            Parts = {EnginePart}
+                            Parts = {EnginePart},
+                            Corners = {},
+                            CornerCount = 0
                         }
                     end
 
@@ -330,7 +336,9 @@ function Module.Function:CacheVehicle(Vehicle)
                     if #Parts > 0 then
                         Groups[#Groups + 1] = {
                             Type = "Ammo",
-                            Parts = Parts
+                            Parts = Parts,
+                            Corners = {},
+                            CornerCount = 0
                         }
                     end
                 end
@@ -341,7 +349,18 @@ function Module.Function:CacheVehicle(Vehicle)
     end
 end
 
+function Module.Function:ResolveFolders()
+    local Game = Module.Game
+    if not Game.Vehicles or not Game.Vehicles.Parent then
+        Game.Vehicles = Workspace:FindFirstChild("SpawnedVehicles")
+    end
+    if not Game.Placed or not Game.Placed.Parent then
+        Game.Placed = Workspace:FindFirstChild("PlacedBuildings")
+    end
+end
+
 function Module.Function:VehicleCache()
+    Module.Function:ResolveFolders()
     if not Module.Game.Vehicles then
         return
     end
@@ -394,7 +413,11 @@ function Module.Function:CacheDrone(Drone)
             OwnerTag = OwnerTag,
             Name = Drone.Name,
             Class = "Drone",
-            Occupied = Drone:GetAttribute("Occupied") == true
+            Occupied = Drone:GetAttribute("Occupied") == true,
+            Team = nil,
+
+            Position = nil,
+            Text = nil
         }
     end
 end
@@ -408,8 +431,18 @@ function Module.Function:DroneCache()
         end
     end
 
+    Module.Function:ResolveFolders()
+    if not Module.Game.Placed then return end
+
     for _, Drone in Module.Game.Placed:GetChildren() do
         pcall(Module.Function.CacheDrone, Module.Function, Drone)
+    end
+
+    for _, Entry in Drones do
+        local OwnerTag = Entry.OwnerTag
+        if OwnerTag and OwnerTag.Parent and OwnerTag:IsA("StringValue") then
+            Entry.Team = Module.Function:GetPlayerTeam(OwnerTag.Value)
+        end
     end
 end
 
@@ -419,21 +452,21 @@ function Module.Function:ScanArmor()
 
     local Cache = Module.Stored.Armor
 
-    for _, Vehicle in ipairs(Module.Game.Vehicles:GetChildren()) do
+    for _, Vehicle in Module.Game.Vehicles:GetChildren() do
         pcall(function()
             if Vehicle.Name == "DONOT" or Vehicle.ClassName ~= "Model" then return end
 
             local Values = Cache[Vehicle]
             if not Values then
                 Values = {}
-                for _, Item in ipairs(Vehicle:GetDescendants()) do
+                for _, Item in Vehicle:GetDescendants() do
                     if Item:IsA("NumberValue") and Item.Name == "ArmourValue" then
                         Values[Item] = Item.Value
                     end
                 end
                 Cache[Vehicle] = Values
             end
-            for ValueObject, _ in pairs(Values) do
+            for ValueObject, _ in Values do
                 if ValueObject.Parent and ValueObject.Value ~= 0 then
                     ValueObject.Value = 0
                 end
@@ -441,7 +474,7 @@ function Module.Function:ScanArmor()
         end)
     end
 
-    for Vehicle in pairs(Cache) do
+    for Vehicle in Cache do
         if not Vehicle.Parent then
             Cache[Vehicle] = nil
         end
@@ -451,8 +484,8 @@ end
 function Module.Function:RestoreArmor()
     local Cache = Module.Stored.Armor
 
-    for Vehicle, Values in pairs(Cache) do
-        for ValueObject, Original in pairs(Values) do
+    for Vehicle, Values in Cache do
+        for ValueObject, Original in Values do
             if ValueObject and ValueObject.Parent then
                 ValueObject.Value = Original
             end
@@ -461,69 +494,117 @@ function Module.Function:RestoreArmor()
     end
 end
 
-function Module.Function:RenderVehicle(Data, HumanoidRootPart, CenterX, CenterY, Half)
-    local Vehicle = Data.Vehicle
-    local PrimaryPart = Data.PrimaryPart
+function Module.Function.UpdateTargets()
+    local Stored = Module.Stored
 
-    if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then return end
+    Camera = Workspace.CurrentCamera or Camera
+    if Camera then
+        Stored.Viewport = Camera.ViewportSize
+    end
 
-    if is_team_check_active() then
-        if LocalPlayer.Team and LocalPlayer.Team.Parent and Data.Team == LocalPlayer.Team.Name then
-            return
+    local RenderVehicles = Library.Flags["Render Vehicles"]
+    local RenderDrones = Library.Flags["Render Drones"]
+    if not (RenderVehicles or RenderDrones) then return end
+
+    local Character = LocalPlayer and LocalPlayer.Character
+    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+    local MyPosition = HumanoidRootPart and HumanoidRootPart.Parent and HumanoidRootPart.Position
+
+    local Team = LocalPlayer and LocalPlayer.Team
+    Stored.LocalTeam = (Team and Team.Parent) and Team.Name or nil
+    Stored.TeamCheck = is_team_check_active()
+
+    if RenderVehicles then
+        local ShowDistance = Library.Flags["Vehicle Distance"]
+        local WantModules = Library.Flags["Render Modules"] and (Library.Flags["Vehicle Ammo"] or Library.Flags["Vehicle Engine"])
+        local CenterX, CenterY = Stored.Viewport.X * 0.5, Stored.Viewport.Y * 0.5
+        local Half = Library.Flags["Field of View"].Value * 0.5
+
+        for _, Data in Stored.Vehicles do
+            local Vehicle, PrimaryPart = Data.Vehicle, Data.PrimaryPart
+            Data.Position, Data.DistanceText = nil, nil
+
+            if not (Vehicle and Vehicle.Parent and PrimaryPart and PrimaryPart.Parent and PrimaryPart:IsA("BasePart")) then continue end
+
+            local Position = PrimaryPart.Position
+            Data.Position = Position
+
+            if ShowDistance and MyPosition then
+                Data.DistanceText = string.format("[%.0f]", vector.magnitude(MyPosition - Position) / 2.78125)
+            end
+
+            local Groups = Data.Groups
+            if Groups then
+                local InView = false
+                if WantModules and Camera then
+                    local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
+                    InView = OnScreen and MathAbs(Screen.X - CenterX) <= Half and MathAbs(Screen.Y - CenterY) <= Half
+                end
+
+                for _, Group in Groups do
+                    local Enabled = InView and ((Group.Type == "Engine" and Library.Flags["Vehicle Engine"]) or (Group.Type == "Ammo" and Library.Flags["Vehicle Ammo"]))
+                    Group.CornerCount = Enabled and Module.Function:CollectPartCorners(Group.Parts, Group.Corners) or 0
+                end
+            end
         end
     end
 
-    local Position = PrimaryPart.CFrame.Position
+    if RenderDrones then
+        for _, Data in Stored.Drones do
+            local Part = Data.Part
+            Data.Position, Data.Text = nil, nil
+
+            if not (Part and Part.Parent) then continue end
+
+            local Position = Part.Position
+            Data.Position = Position
+            Data.Text = MyPosition and string.format("Drone [%.0f]", vector.magnitude(MyPosition - Position) / 2.78125) or "Drone"
+        end
+    end
+end
+
+function Module.Function:RenderVehicle(Data)
+    local Stored = Module.Stored
+    local Position = Data.Position
+    if not Position then return end
+
+    if Stored.TeamCheck and Stored.LocalTeam and Data.Team == Stored.LocalTeam then return end
 
     local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
     if not OnScreen then return end
 
-    local Name = Library.Flags["Vehicle Names"] and Vehicle.Name
-    local Distance
+    local Name = Library.Flags["Vehicle Names"] and Data.Name or nil
+    local Distance = Data.DistanceText
 
-    if HumanoidRootPart then
-        Distance = Library.Flags["Vehicle Distance"] and HumanoidRootPart and string.format("[%.0f]", vector.magnitude(HumanoidRootPart.Position - Position) / 2.78125)
-    else
-        Distance = 0
-    end
-
-    local NameWidth = typeof(Name) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Name).X or 0
-    local DistanceWidth = typeof(Distance) == "string" and DrawingImmediate.GetTextBounds("Verdana", 13, Distance).X or 0
-    local Padding = Name and Distance and 4 or 0
+    local NameWidth = Name and DrawingImmediate.GetTextBounds("Avant", 13, Name).X or 0
+    local DistanceWidth = Distance and DrawingImmediate.GetTextBounds("Avant", 13, Distance).X or 0
+    local Padding = (Name and Distance) and 4 or 0
 
     local X = Screen.X - (NameWidth + Padding + DistanceWidth) / 2
     local Y = Screen.Y
 
+    local UseOccupied = Library.Flags["Use Occupied Color"] and Data.Occupied
+
     if Name then
-        local NameColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
-        DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Verdana")
+        local NameColor = UseOccupied and Library.Flags["Occupied Color"] or Library.Flags["Name Color"]
+        DrawingImmediate.OutlinedText(Vector2.new(X + NameWidth / 2, Y), 13, NameColor.Color, NameColor.Alpha, Name, true, "Avant")
         X = X + NameWidth + Padding
     end
 
     if Distance then
-        local DistanceColor = (Library.Flags["Use Occupied Color"] and Data.Occupied) and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
-        DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Verdana")
+        local DistanceColor = UseOccupied and Library.Flags["Occupied Color"] or Library.Flags["Distance Color"]
+        DrawingImmediate.OutlinedText(Vector2.new(X + DistanceWidth / 2, Y), 13, DistanceColor.Color, DistanceColor.Alpha, Distance, true, "Avant")
     end
 
     local Groups = Data.Groups
     if not (Library.Flags["Render Modules"] and Groups) then return end
-    if MathAbs(Screen.X - CenterX) > Half or MathAbs(Screen.Y - CenterY) > Half then return end
 
-    for _, Group in ipairs(Groups) do
-        local GroupType = Group.Type
+    for _, Group in Groups do
+        if Group.CornerCount == 0 then continue end
 
-        local Enabled = (GroupType == "Engine" and Library.Flags["Vehicle Engine"]) or (GroupType == "Ammo" and Library.Flags["Vehicle Ammo"])
-        if not Enabled then continue end
+        local Color = Group.Type == "Engine" and Library.Flags["Engine Color"] or Library.Flags["Ammo Color"]
 
-        local Color = GroupType == "Engine" and Library.Flags["Engine Color"] or Library.Flags["Ammo Color"]
-
-        local PointCount = 0
-        for _, Part in ipairs(Group.Parts) do
-            if Part and Part.Parent then
-                PointCount = self:ProjectPartCorners(Part, PointCount)
-            end
-        end
-
+        local PointCount = self:ProjectCorners(Group.Corners, Group.CornerCount, 0)
         if PointCount == 0 then continue end
         Convex.Static.HWMPoints = self:TruncateBuffer(Convex.Scratch.Points, PointCount, Convex.Static.HWMPoints)
 
@@ -536,54 +617,31 @@ function Module.Function:RenderVehicle(Data, HumanoidRootPart, CenterX, CenterY,
     end
 end
 
-function Module.Function:RenderDrone(Data, HumanoidRootPart)
-    local Part = Data.Part
-    if not Part or not Part.Parent then return end
+function Module.Function:RenderDrone(Data)
+    local Stored = Module.Stored
+    local Position = Data.Position
+    if not Position or not Data.Text then return end
 
-    if is_team_check_active() then
-        local Team
-        if Data.OwnerTag and Data.OwnerTag.Parent and Data.OwnerTag:IsA("StringValue") then
-            Team = Module.Function:GetPlayerTeam(Data.OwnerTag.Value)
-        end
-        if LocalPlayer.Team and LocalPlayer.Team.Parent and Team == LocalPlayer.Team.Name then
-            return
-        end
-    end
-
-    local Position = Part.CFrame.Position
+    if Stored.TeamCheck and Stored.LocalTeam and Data.Team == Stored.LocalTeam then return end
 
     local Screen, OnScreen = Camera:WorldToScreenPoint(Position)
     if not OnScreen then return end
 
-    local DroneText = "Drone"
-    if HumanoidRootPart then
-        local Distance = vector.magnitude(HumanoidRootPart.CFrame.Position - Position) / 2.78125
-        DroneText = string.format("Drone [%.0f]", Distance)
-    end
-
-    DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, DroneText, true, "Verdana")
+    DrawingImmediate.OutlinedText(Screen, 13, Library.Flags["Drone Color"].Color, Library.Flags["Drone Color"].Alpha, Data.Text, true, "Avant")
 end
 
 function Module.Function:Render()
-    if not LocalPlayer then return end
-
-    local Character = LocalPlayer.Character
-    local HumanoidRootPart = Character and Character:FindFirstChild("HumanoidRootPart")
+    if not Camera then return end
 
     if Library.Flags["Render Vehicles"] then
-        local Viewport = Camera.ViewportSize
-        local CenterX = Viewport.X * 0.5
-        local CenterY = Viewport.Y * 0.5
-        local Half = Library.Flags["Field of View"].Value * 0.5
-
-        for _, Data in pairs(Module.Stored.Vehicles) do
-            pcall(Module.Function.RenderVehicle, Module.Function, Data, HumanoidRootPart, CenterX, CenterY, Half)
+        for _, Data in Module.Stored.Vehicles do
+            Module.Function:RenderVehicle(Data)
         end
     end
 
     if Library.Flags["Render Drones"] then
-        for _, Data in pairs(Module.Stored.Drones) do
-            pcall(Module.Function.RenderDrone, Module.Function, Data, HumanoidRootPart)
+        for _, Data in Module.Stored.Drones do
+            Module.Function:RenderDrone(Data)
         end
     end
 end
@@ -609,6 +667,10 @@ end)
 -- // Initalize \\ --
 Library:NavigationBar(Library.Windows[1], Library:StyleWindow(), Library:ConfigWindow())
 Library:Watermark("Goop")
+
+RunService.PostLocal:Connect(function()
+    pcall(Module.Function.UpdateTargets)
+end)
 
 RunService.Render:Connect(function()
     pcall(Module.Function.Render, Module.Function)
