@@ -4,9 +4,6 @@ Everything `Module.lua` adds on top of Severe. Load it once with `loadstring(gam
 
 - **Access** column: `R` = readable, `W` = writable. `R` only means read-only.
 - Properties are declared per class; a class inheriting the member (e.g. `TextLabel` from `GuiObject`) gets it too.
-- **Native note:** `BasePart.Position`, `CFrame`, `Size`, `Transparency` are **Severe-native** and deliberately *not* re-declared here — use them directly.
-- **CFrame note:** `CFrame` values are unreliable in this environment. For a part's position and orientation read `Position`, `RightVector`, `UpVector` and `LookVector` directly. Everything in this module does.
-- **Render note:** instances can't be read inside `RunService.Render`. Read what you need in `RunService.PostLocal` (or a loop) and only draw from those values in Render. The mesh renderer below works this way.
 
 ---
 
@@ -300,10 +297,7 @@ _G.MeshContentProvider.Stop(LocalPlayer.Character)
 - **Models:** direct children only. New direct children (e.g. an equipped tool's MeshPart) are picked up within ~1.8 s, and removed parts are dropped as soon as they're noticed. Accessory meshes sit one level down (`Character > Accessory > Handle`); render a `Handle` directly to include one.
 - **MeshParts only.** A plain Part with a SpecialMesh (e.g. a classic R6 head) can't be drawn.
 - **Rest pose.** Skinned or animated meshes (e.g. dynamic heads) are drawn in their rest pose.
-- **Timing:** part positions are read in `PostLocal`; projecting and drawing happens in `Render`, using `DrawingImmediate.Line`.
 - **Silhouette detail:** the outline follows a grid of roughly 2–3 px cells, so it can look slightly stepped and sits up to about half a cell outside the shape. Raise `MaskMaxCells` for a smoother line.
-
-Examples: `Extra/HeadMeshExample.lua` (your head) and `Extra/CharacterMeshExample.lua` (your whole character, following respawns).
 
 ### `_G.GetCachedMeshData(meshId)`
 → `{ Vertices, Faces, AabbMin, AabbMax, StoredAabbMin, StoredAabbMax } | nil`
