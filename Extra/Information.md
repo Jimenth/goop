@@ -5,6 +5,8 @@ Everything `Module.lua` adds on top of Severe. Load it once with `loadstring(gam
 - **Access** column: `R` = readable, `W` = writable. `R` only means read-only.
 - Properties are declared per class; a class inheriting the member (e.g. `TextLabel` from `GuiObject`) gets it too.
 - **Native note:** `BasePart.Position`, `CFrame`, `Size`, `Transparency` are **Severe-native** and deliberately *not* re-declared here — use them directly.
+- **CFrame note:** `CFrame` values are unreliable in this environment. For a part's position and orientation read `Position`, `RightVector`, `UpVector` and `LookVector` directly. Everything in this module does.
+- **Render note:** instances can't be read inside `RunService.Render`. Read what you need in `RunService.PostLocal` (or a loop) and only draw from those values in Render. The mesh renderer below works this way.
 
 ---
 
@@ -145,6 +147,8 @@ Large sets of the usual properties (colors, floats, textures) — e.g. `Lighting
 - **`BasePart:GetBoundingBox()`** → `(CFrame, Vector3)`. That single part's oriented box.
 - **`GetBoundingBox(x)`** *(global)* → `(CFrame, Vector3)`. `x` may be a **Model**, a **BasePart**, or a **table of parts**.
 
+The box is world-space, axis-aligned, and fits each part's rotated corners, which are worked out from the part's `Position`, `Size` and `RightVector`/`UpVector`/`LookVector`, not its CFrame. The returned CFrame only carries the box's centre, so read `.Position` from it.
+
 ```lua
 local cf, size = character:GetBoundingBox()
 local cf2, size2 = GetBoundingBox({ part1, part2 })
@@ -247,8 +251,85 @@ end)
 
 ---
 
+## Mesh Rendering
+
+Draws a live on-screen outline of a MeshPart, or of every direct-child MeshPart of a Model. The geometry is read straight from the game's own mesh cache, with no downloading or re-parsing.
+
+### `_G.MeshContentProvider.Render(instance, options?)`
+Starts a render, or replaces an existing one for the same instance.
+
+- `instance`: a **MeshPart**, or a **Model** (its direct-child MeshParts are tracked).
+- Returns nothing. Warns if `instance` is neither.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `Mode` | string | `"Silhouette"` | `"Silhouette"`: one outer outline around all the tracked parts, like a Highlight. Touching or overlapping parts merge into one connected outline, and nothing inside the shape is drawn. `"Wireframe"`: every edge of every mesh. |
+| `Color` | Color3 / vector | white | Line colour. |
+| `Thickness` | number | `1` | Line thickness in pixels. |
+| `Opacity` | number | `1` | Line opacity, `0`–`1`. |
+
+### `_G.MeshContentProvider.Stop(instance)`
+Stops the render started with `Render(instance, ...)`. Renders also stop by themselves once the instance is removed.
+
+### `_G.MeshContentProvider.Settings`
+Tuning for Silhouette mode. Changes apply from the next frame.
+
+| Setting | Default | Description |
+|---|---|---|
+| `MaskMaxCells` | `128` | Resolution of the outline: cells across the group's longest on-screen side. Higher is smoother but costs more per frame. |
+| `MaskMinCell` | `1.5` | Smallest cell size in pixels, so small or distant groups don't get finer than needed. |
+| `SimplifyPoints` | `300` | Point budget for each mesh's simplified outline copy. Each mesh's copy is built once and reused, so a change only affects meshes that haven't been drawn in Silhouette mode yet. |
+
+```lua
+-- Outline your whole character (direct-child MeshParts), Highlight-style
+_G.MeshContentProvider.Render(LocalPlayer.Character, {
+    Color = Color3.fromRGB(177, 156, 217),
+    Thickness = 1,
+    Mode = "Silhouette",
+})
+
+-- Every edge of one part
+_G.MeshContentProvider.Render(LocalPlayer.Character.Head, { Mode = "Wireframe" })
+
+-- Later
+_G.MeshContentProvider.Stop(LocalPlayer.Character)
+```
+
+**Behaviour**
+- **Cached meshes only.** A mesh can only be drawn once the game has loaded and rendered it. Parts whose mesh isn't cached yet are retried every ~1.8 s, so they appear on their own once it is.
+- **Models:** direct children only. New direct children (e.g. an equipped tool's MeshPart) are picked up within ~1.8 s, and removed parts are dropped as soon as they're noticed. Accessory meshes sit one level down (`Character > Accessory > Handle`); render a `Handle` directly to include one.
+- **MeshParts only.** A plain Part with a SpecialMesh (e.g. a classic R6 head) can't be drawn.
+- **Rest pose.** Skinned or animated meshes (e.g. dynamic heads) are drawn in their rest pose.
+- **Timing:** part positions are read in `PostLocal`; projecting and drawing happens in `Render`, using `DrawingImmediate.Line`.
+- **Silhouette detail:** the outline follows a grid of roughly 2–3 px cells, so it can look slightly stepped and sits up to about half a cell outside the shape. Raise `MaskMaxCells` for a smoother line.
+
+Examples: `Extra/HeadMeshExample.lua` (your head) and `Extra/CharacterMeshExample.lua` (your whole character, following respawns).
+
+### `_G.GetCachedMeshData(meshId)`
+→ `{ Vertices, Faces, AabbMin, AabbMax, StoredAabbMin, StoredAabbMax } | nil`
+
+The raw geometry behind the renderer, for your own use. `meshId` is a mesh asset string such as `part.MeshId`. Any form works, as long as it ends in the asset id.
+
+| Field | Type | Description |
+|---|---|---|
+| `Vertices` | `{ vector }` | Vertex positions in mesh space. |
+| `Faces` | `{ { a, b, c } }` | Triangles, as 1-based indices into `Vertices`. |
+| `AabbMin`, `AabbMax` | vector | Bounds of the vertices the triangles use. This is what a MeshPart fits to its `Size` and centres on its `Position`. |
+| `StoredAabbMin`, `StoredAabbMax` | vector | The bounds stored with the mesh, which can be larger. |
+
+Returns `nil` if the mesh isn't in the cache. Results are cached per mesh id, so repeat calls are cheap.
+
+```lua
+local Data = _G.GetCachedMeshData(tostring(Head.MeshId))
+print(Data and (#Data.Vertices .. " vertices, " .. #Data.Faces .. " faces") or "not cached yet")
+```
+
+---
+
 ## Globals
 
 - **`GetBoundingBox(...)`** — see Methods.
+- **`_G.MeshContentProvider`** — `Render`, `Stop`, `Settings`; see Mesh Rendering.
+- **`_G.GetCachedMeshData(meshId)`** — see Mesh Rendering.
 - **`_G.TweenService`** — fallback table (`Create`, `GetValue`, `GetActiveTweens`) if `game:GetService("TweenService")` doesn't resolve.
 - **`_G.Easing`** — table of every EasingStyle function (`Linear`, `Sine`, `Quad`, `Cubic`, `Quart`, `Quint`, `Back`, `Circular`, `Exponential`, `Elastic`, `Bounce`), each `In/Out/InOut`.
