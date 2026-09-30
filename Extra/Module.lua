@@ -494,7 +494,7 @@ local Global = {
                 ShirtTemplate = Offsets.Clothing.Template,
             },
             Pants = {
-                PantsTemplate = Offsets.Clothing.Template,
+                PantsTemplate = 0xD0,
             },
             DataModel = {
                 JobId = { Offset = Offsets.DataModel.JobId, ReadOnly = true },
@@ -1058,511 +1058,6 @@ function Global.Function:DeclarePrimitiveFlags(Fields)
         })
     end
 end
-
--- // CFrame -- complete reimplementation \\ --
--- Severe's native CFrame is broken in this environment: BasePart.CFrame reads
--- back as a plain Lua table (not a real userdata) that lacks operators
--- (`cf * vector` throws "attempt to perform arithmetic (mul) on table and
--- vector") and lacks methods (:PointToWorldSpace doesn't exist) -- confirmed
--- directly while building the mesh outline renderer above, which is why that
--- code works off Position/RightVector/UpVector/LookVector by hand instead of
--- touching .CFrame's operators. This replaces the global CFrame entirely with
--- a complete pure-Lua implementation: every standard constructor, every
--- method, real operators (+, -, *, ==), all built on 12 plain numbers
--- (position xyz + a row-major 3x3 rotation matrix, matching :GetComponents()'s
--- own layout) with no dependency on the native type at all.
---
--- This does NOT fix WRITING rotation to a live BasePart -- Position is the
--- only confirmed-reliable native write path in this environment (see
--- [[severe-native-properties]]; native CFrame writes are already known to
--- spin/invert a moving character, which is why TweenService aliases CFrame
--- goals to Position-only below). ReadPartCFrame(Part) gives a correct, fully
--- functional CFrame built from a live part's CURRENT transform for
--- reading/math purposes; there's no matching writer.
-
-local CFrameMeta = {}
-
--- // Matrix / quaternion math (module-private) \\ --
-
--- 3x3 * 3x3, both flattened row-major (9 in, 9 in, 9 out) to avoid wrapping
--- intermediates in tables -- this gets called during every CFrame*CFrame and
--- every Euler-angle construction.
-local function MatMul3(
-    A00,A01,A02,A10,A11,A12,A20,A21,A22,
-    B00,B01,B02,B10,B11,B12,B20,B21,B22
-)
-    return
-        A00*B00 + A01*B10 + A02*B20,
-        A00*B01 + A01*B11 + A02*B21,
-        A00*B02 + A01*B12 + A02*B22,
-        A10*B00 + A11*B10 + A12*B20,
-        A10*B01 + A11*B11 + A12*B21,
-        A10*B02 + A11*B12 + A12*B22,
-        A20*B00 + A21*B10 + A22*B20,
-        A20*B01 + A21*B11 + A22*B21,
-        A20*B02 + A21*B12 + A22*B22
-end
-
-local function VecLen(X, Y, Z)
-    return math.sqrt(X*X + Y*Y + Z*Z)
-end
-
-local function VecNormalize(X, Y, Z)
-    local Len = VecLen(X, Y, Z)
-    if Len == 0 then return 0, 0, 0 end
-    return X / Len, Y / Len, Z / Len
-end
-
-local function VecCross(AX, AY, AZ, BX, BY, BZ)
-    return AY*BZ - AZ*BY, AZ*BX - AX*BZ, AX*BY - AY*BX
-end
-
--- Matrix -> quaternion (Shepperd's method, the standard numerically-stable
--- approach -- picks whichever of trace/R00/R11/R22 is largest as the pivot).
-local function MatrixToQuaternion(R00,R01,R02,R10,R11,R12,R20,R21,R22)
-    local Trace = R00 + R11 + R22
-    local QX, QY, QZ, QW
-
-    if Trace > 0 then
-        local S = math.sqrt(Trace + 1) * 2
-        QW = 0.25 * S
-        QX = (R21 - R12) / S
-        QY = (R02 - R20) / S
-        QZ = (R10 - R01) / S
-    elseif R00 > R11 and R00 > R22 then
-        local S = math.sqrt(1 + R00 - R11 - R22) * 2
-        QW = (R21 - R12) / S
-        QX = 0.25 * S
-        QY = (R01 + R10) / S
-        QZ = (R02 + R20) / S
-    elseif R11 > R22 then
-        local S = math.sqrt(1 + R11 - R00 - R22) * 2
-        QW = (R02 - R20) / S
-        QX = (R01 + R10) / S
-        QY = 0.25 * S
-        QZ = (R12 + R21) / S
-    else
-        local S = math.sqrt(1 + R22 - R00 - R11) * 2
-        QW = (R10 - R01) / S
-        QX = (R02 + R20) / S
-        QY = (R12 + R21) / S
-        QZ = 0.25 * S
-    end
-
-    return QX, QY, QZ, QW
-end
-
--- Quaternion -> matrix (expects a normalized quaternion).
-local function QuaternionToMatrix(QX, QY, QZ, QW)
-    return
-        1 - 2*(QY*QY + QZ*QZ), 2*(QX*QY - QZ*QW),     2*(QX*QZ + QY*QW),
-        2*(QX*QY + QZ*QW),     1 - 2*(QX*QX + QZ*QZ), 2*(QY*QZ - QX*QW),
-        2*(QX*QZ - QY*QW),     2*(QY*QZ + QX*QW),     1 - 2*(QX*QX + QY*QY)
-end
-
--- // Construction \\ --
-
-local function NewCFrameRaw(X, Y, Z, R00, R01, R02, R10, R11, R12, R20, R21, R22)
-    return setmetatable({
-        X = X, Y = Y, Z = Z,
-        R00 = R00, R01 = R01, R02 = R02,
-        R10 = R10, R11 = R11, R12 = R12,
-        R20 = R20, R21 = R21, R22 = R22,
-    }, CFrameMeta)
-end
-
-local function IsCFrame(Value)
-    return type(Value) == "table" and getmetatable(Value) == CFrameMeta
-end
-Global.Function.IsCFrame = function(_, Value) return IsCFrame(Value) end
-
--- Normalises any position/vector-like argument (Vector3, native vector, or a
--- plain {x,y,z}/{X,Y,Z} table) into three plain numbers.
-local function ToXYZ(Value)
-    local Components = Global.Function:ToComponents(Value)
-    return Components.x, Components.y, Components.z
-end
-
-local CFrameLib = {}
-
-function CFrameLib.new(...)
-    local Count = select("#", ...)
-
-    if Count == 0 then
-        return NewCFrameRaw(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-    end
-
-    if Count == 1 then
-        local A = ...
-        if IsCFrame(A) then
-            return NewCFrameRaw(A.X, A.Y, A.Z, A.R00, A.R01, A.R02, A.R10, A.R11, A.R12, A.R20, A.R21, A.R22)
-        end
-        local X, Y, Z = ToXYZ(A)
-        return NewCFrameRaw(X, Y, Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-    end
-
-    if Count == 2 then
-        local PosArg, LookArg = ...
-        return CFrameLib.lookAt(PosArg, LookArg)
-    end
-
-    if Count == 3 then
-        local X, Y, Z = ...
-        return NewCFrameRaw(X, Y, Z, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-    end
-
-    if Count == 7 then
-        local X, Y, Z, QX, QY, QZ, QW = ...
-        local R00,R01,R02,R10,R11,R12,R20,R21,R22 = QuaternionToMatrix(QX, QY, QZ, QW)
-        return NewCFrameRaw(X, Y, Z, R00,R01,R02,R10,R11,R12,R20,R21,R22)
-    end
-
-    if Count == 12 then
-        return NewCFrameRaw(...)
-    end
-
-    error("CFrame.new: unsupported argument count (" .. Count .. ")", 2)
-end
-
--- CFrame.lookAt(position, lookAt, up?) -- orients so LookVector points from
--- position toward lookAt. up defaults to (0, 1, 0); if the look direction is
--- parallel to up, falls back to an alternate up so the basis doesn't collapse
--- to NaN.
-function CFrameLib.lookAt(Position, LookAt, Up)
-    local PX, PY, PZ = ToXYZ(Position)
-    local LX, LY, LZ = ToXYZ(LookAt)
-    local UX, UY, UZ
-    if Up then UX, UY, UZ = ToXYZ(Up) else UX, UY, UZ = 0, 1, 0 end
-
-    local BackX, BackY, BackZ = VecNormalize(PX - LX, PY - LY, PZ - LZ)
-    if BackX == 0 and BackY == 0 and BackZ == 0 then
-        return NewCFrameRaw(PX, PY, PZ, 1, 0, 0, 0, 1, 0, 0, 0, 1) -- position == lookAt
-    end
-
-    local RightX, RightY, RightZ = VecCross(UX, UY, UZ, BackX, BackY, BackZ)
-    if VecLen(RightX, RightY, RightZ) < 1e-6 then
-        RightX, RightY, RightZ = VecCross(0, 0, 1, BackX, BackY, BackZ)
-        if VecLen(RightX, RightY, RightZ) < 1e-6 then
-            RightX, RightY, RightZ = VecCross(1, 0, 0, BackX, BackY, BackZ)
-        end
-    end
-    RightX, RightY, RightZ = VecNormalize(RightX, RightY, RightZ)
-    local TrueUpX, TrueUpY, TrueUpZ = VecCross(BackX, BackY, BackZ, RightX, RightY, RightZ)
-
-    return NewCFrameRaw(PX, PY, PZ,
-        RightX, TrueUpX, BackX,
-        RightY, TrueUpY, BackY,
-        RightZ, TrueUpZ, BackZ)
-end
-
--- CFrame.fromMatrix(position, right, up, back?) -- back defaults to
--- normalize(right x up) if omitted.
-function CFrameLib.fromMatrix(Position, Right, Up, Back)
-    local PX, PY, PZ = ToXYZ(Position)
-    local RX, RY, RZ = ToXYZ(Right)
-    local UX, UY, UZ = ToXYZ(Up)
-    local BX, BY, BZ
-    if Back then
-        BX, BY, BZ = ToXYZ(Back)
-    else
-        BX, BY, BZ = VecNormalize(VecCross(RX, RY, RZ, UX, UY, UZ))
-    end
-    return NewCFrameRaw(PX, PY, PZ, RX, UX, BX, RY, UY, BY, RZ, UZ, BZ)
-end
-
--- CFrame.fromAxisAngle(axis, angle) -- Rodrigues' rotation formula.
-function CFrameLib.fromAxisAngle(Axis, Angle)
-    local AX, AY, AZ = ToXYZ(Axis)
-    AX, AY, AZ = VecNormalize(AX, AY, AZ)
-    local Cos, Sin = math.cos(Angle), math.sin(Angle)
-    local OneMinusCos = 1 - Cos
-
-    return NewCFrameRaw(0, 0, 0,
-        Cos + AX*AX*OneMinusCos,      AX*AY*OneMinusCos - AZ*Sin,    AX*AZ*OneMinusCos + AY*Sin,
-        AY*AX*OneMinusCos + AZ*Sin,   Cos + AY*AY*OneMinusCos,       AY*AZ*OneMinusCos - AX*Sin,
-        AZ*AX*OneMinusCos - AY*Sin,   AZ*AY*OneMinusCos + AX*Sin,    Cos + AZ*AZ*OneMinusCos)
-end
-
--- CFrame.Angles(rx, ry, rz) / CFrame.fromEulerAnglesXYZ(rx, ry, rz) --
--- consecutively rotates about the object-space X, then Y, then Z axes
--- (radians). Combined matrix is Rx * Ry * Rz. Only XYZ order is implemented --
--- Roblox's newer CFrame.fromEulerAngles(rx,ry,rz,order) supports 6 orders via
--- Enum.RotationOrder; ToEulerAngles below has the same XYZ-only limitation.
-function CFrameLib.fromEulerAnglesXYZ(RX, RY, RZ)
-    local CX, SX = math.cos(RX), math.sin(RX)
-    local CY, SY = math.cos(RY), math.sin(RY)
-    local CZ, SZ = math.cos(RZ), math.sin(RZ)
-
-    local M00,M01,M02,M10,M11,M12,M20,M21,M22 = MatMul3(
-        1,0,0, 0,CX,-SX, 0,SX,CX,
-        CY,0,SY, 0,1,0, -SY,0,CY
-    )
-    local R00,R01,R02,R10,R11,R12,R20,R21,R22 = MatMul3(
-        M00,M01,M02,M10,M11,M12,M20,M21,M22,
-        CZ,-SZ,0, SZ,CZ,0, 0,0,1
-    )
-    return NewCFrameRaw(0, 0, 0, R00,R01,R02,R10,R11,R12,R20,R21,R22)
-end
-CFrameLib.Angles = CFrameLib.fromEulerAnglesXYZ
-CFrameLib.fromOrientation = CFrameLib.fromEulerAnglesXYZ
-
-function CFrameLib.fromEulerAngles(RX, RY, RZ, Order)
-    return CFrameLib.fromEulerAnglesXYZ(RX, RY, RZ) -- Order ignored, see note above
-end
-
--- // Computed fields \\ --
-
-local CFrameComputed = {
-    Position = function(self) return Vector3.new(self.X, self.Y, self.Z) end,
-    RightVector = function(self) return Vector3.new(self.R00, self.R10, self.R20) end,
-    UpVector = function(self) return Vector3.new(self.R01, self.R11, self.R21) end,
-    LookVector = function(self) return Vector3.new(-self.R02, -self.R12, -self.R22) end,
-    XVector = function(self) return Vector3.new(self.R00, self.R10, self.R20) end,
-    YVector = function(self) return Vector3.new(self.R01, self.R11, self.R21) end,
-    ZVector = function(self) return Vector3.new(self.R02, self.R12, self.R22) end,
-}
-CFrameComputed.p = CFrameComputed.Position
-CFrameComputed.rightVector = CFrameComputed.RightVector
-CFrameComputed.upVector = CFrameComputed.UpVector
-CFrameComputed.lookVector = CFrameComputed.LookVector
-
--- // Methods \\ --
-
-local CFrameMethods = {}
-
-function CFrameMethods:PointToWorldSpace(Point)
-    local PX, PY, PZ = ToXYZ(Point)
-    return Vector3.new(
-        self.X + self.R00*PX + self.R01*PY + self.R02*PZ,
-        self.Y + self.R10*PX + self.R11*PY + self.R12*PZ,
-        self.Z + self.R20*PX + self.R21*PY + self.R22*PZ)
-end
-
-function CFrameMethods:VectorToWorldSpace(Point)
-    local PX, PY, PZ = ToXYZ(Point)
-    return Vector3.new(
-        self.R00*PX + self.R01*PY + self.R02*PZ,
-        self.R10*PX + self.R11*PY + self.R12*PZ,
-        self.R20*PX + self.R21*PY + self.R22*PZ)
-end
-
-function CFrameMethods:PointToObjectSpace(Point)
-    local PX, PY, PZ = ToXYZ(Point)
-    local DX, DY, DZ = PX - self.X, PY - self.Y, PZ - self.Z
-    -- multiply by R^T (transpose = inverse, since the rotation is orthonormal)
-    return Vector3.new(
-        self.R00*DX + self.R10*DY + self.R20*DZ,
-        self.R01*DX + self.R11*DY + self.R21*DZ,
-        self.R02*DX + self.R12*DY + self.R22*DZ)
-end
-
-function CFrameMethods:VectorToObjectSpace(Point)
-    local PX, PY, PZ = ToXYZ(Point)
-    return Vector3.new(
-        self.R00*PX + self.R10*PY + self.R20*PZ,
-        self.R01*PX + self.R11*PY + self.R21*PZ,
-        self.R02*PX + self.R12*PY + self.R22*PZ)
-end
-
-function CFrameMethods:Inverse()
-    local IX = -(self.R00*self.X + self.R10*self.Y + self.R20*self.Z)
-    local IY = -(self.R01*self.X + self.R11*self.Y + self.R21*self.Z)
-    local IZ = -(self.R02*self.X + self.R12*self.Y + self.R22*self.Z)
-    return NewCFrameRaw(IX, IY, IZ,
-        self.R00, self.R10, self.R20,
-        self.R01, self.R11, self.R21,
-        self.R02, self.R12, self.R22)
-end
-
-function CFrameMethods:ToWorldSpace(Other)
-    return self * Other
-end
-
-function CFrameMethods:ToObjectSpace(Other)
-    return self:Inverse() * Other
-end
-
-function CFrameMethods:GetComponents()
-    return self.X, self.Y, self.Z,
-        self.R00, self.R01, self.R02,
-        self.R10, self.R11, self.R12,
-        self.R20, self.R21, self.R22
-end
-CFrameMethods.components = CFrameMethods.GetComponents
-
-function CFrameMethods:ToEulerAnglesXYZ()
-    local Clamped = math.clamp(self.R02, -1, 1)
-    local RY = math.asin(Clamped)
-    local RX, RZ
-    if math.abs(self.R02) < 0.99999 then
-        RX = math.atan2(-self.R12, self.R22)
-        RZ = math.atan2(-self.R01, self.R00)
-    else
-        -- Gimbal lock (RY at +-90 degrees): RX/RZ aren't independently
-        -- recoverable, so RZ is pinned to 0 and RX absorbs the remainder.
-        RX = math.atan2(self.R21, self.R11)
-        RZ = 0
-    end
-    return RX, RY, RZ
-end
-CFrameMethods.ToOrientation = CFrameMethods.ToEulerAnglesXYZ
-
--- Order ignored (XYZ only) -- see the note on fromEulerAngles above.
-function CFrameMethods:ToEulerAngles(Order)
-    return self:ToEulerAnglesXYZ()
-end
-
-function CFrameMethods:ToAxisAngle()
-    local Trace = self.R00 + self.R11 + self.R22
-    local Angle = math.acos(math.clamp((Trace - 1) * 0.5, -1, 1))
-
-    if Angle < 1e-6 then
-        return Vector3.new(1, 0, 0), 0
-    end
-
-    local AX, AY, AZ = self.R21 - self.R12, self.R02 - self.R20, self.R10 - self.R01
-    local Len = VecLen(AX, AY, AZ)
-    if Len < 1e-6 then
-        -- ~180 degree rotation -- the antisymmetric part above vanishes, so
-        -- pull the axis from whichever diagonal term is largest instead.
-        if self.R00 >= self.R11 and self.R00 >= self.R22 then
-            AX, AY, AZ = math.sqrt(math.max(0, (self.R00 + 1) * 0.5)), 0, 0
-        elseif self.R11 >= self.R22 then
-            AX, AY, AZ = 0, math.sqrt(math.max(0, (self.R11 + 1) * 0.5)), 0
-        else
-            AX, AY, AZ = 0, 0, math.sqrt(math.max(0, (self.R22 + 1) * 0.5))
-        end
-        Len = VecLen(AX, AY, AZ)
-        if Len == 0 then AX, AY, AZ, Len = 1, 0, 0, 1 end
-    end
-
-    return Vector3.new(AX / Len, AY / Len, AZ / Len), Angle
-end
-
--- Position: linear interpolation. Rotation: proper spherical (slerp) via
--- quaternions, not a naive per-component lerp of the matrix (which wouldn't
--- stay orthonormal) -- matches how real Roblox CFrame:Lerp behaves.
-function CFrameMethods:Lerp(Goal, Alpha)
-    if not IsCFrame(Goal) then
-        error("CFrame:Lerp expects a CFrame", 2)
-    end
-    if Alpha == 0 then return self end
-    if Alpha == 1 then
-        return NewCFrameRaw(Goal.X, Goal.Y, Goal.Z, Goal.R00, Goal.R01, Goal.R02, Goal.R10, Goal.R11, Goal.R12, Goal.R20, Goal.R21, Goal.R22)
-    end
-
-    local PX = self.X + (Goal.X - self.X) * Alpha
-    local PY = self.Y + (Goal.Y - self.Y) * Alpha
-    local PZ = self.Z + (Goal.Z - self.Z) * Alpha
-
-    local Q1X, Q1Y, Q1Z, Q1W = MatrixToQuaternion(self.R00,self.R01,self.R02,self.R10,self.R11,self.R12,self.R20,self.R21,self.R22)
-    local Q2X, Q2Y, Q2Z, Q2W = MatrixToQuaternion(Goal.R00,Goal.R01,Goal.R02,Goal.R10,Goal.R11,Goal.R12,Goal.R20,Goal.R21,Goal.R22)
-
-    local Dot = Q1X*Q2X + Q1Y*Q2Y + Q1Z*Q2Z + Q1W*Q2W
-    if Dot < 0 then
-        Q2X, Q2Y, Q2Z, Q2W = -Q2X, -Q2Y, -Q2Z, -Q2W -- shortest path
-        Dot = -Dot
-    end
-    Dot = math.min(Dot, 1)
-
-    local RX, RY, RZ, RW
-    if Dot > 0.9995 then
-        -- Nearly identical rotations: linear interpolation + renormalize is a
-        -- fine approximation and avoids a near-zero divide below.
-        RX, RY, RZ, RW = Q1X + (Q2X-Q1X)*Alpha, Q1Y + (Q2Y-Q1Y)*Alpha, Q1Z + (Q2Z-Q1Z)*Alpha, Q1W + (Q2W-Q1W)*Alpha
-        local Len = math.sqrt(RX*RX + RY*RY + RZ*RZ + RW*RW)
-        if Len > 0 then RX, RY, RZ, RW = RX/Len, RY/Len, RZ/Len, RW/Len end
-    else
-        local Theta0 = math.acos(Dot)
-        local Theta = Theta0 * Alpha
-        local SinTheta0 = math.sin(Theta0)
-        local S1 = math.sin(Theta0 - Theta) / SinTheta0
-        local S2 = math.sin(Theta) / SinTheta0
-        RX, RY, RZ, RW = Q1X*S1 + Q2X*S2, Q1Y*S1 + Q2Y*S2, Q1Z*S1 + Q2Z*S2, Q1W*S1 + Q2W*S2
-    end
-
-    local R00,R01,R02,R10,R11,R12,R20,R21,R22 = QuaternionToMatrix(RX, RY, RZ, RW)
-    return NewCFrameRaw(PX, PY, PZ, R00,R01,R02,R10,R11,R12,R20,R21,R22)
-end
-
--- // Metamethods \\ --
-
-CFrameMeta.__index = function(self, Key)
-    local Computed = CFrameComputed[Key]
-    if Computed then return Computed(self) end
-    return CFrameMethods[Key]
-end
-
-CFrameMeta.__mul = function(A, B)
-    if not IsCFrame(A) then
-        error("attempt to perform arithmetic (mul) on a non-CFrame value", 2)
-    end
-    if IsCFrame(B) then
-        local R00,R01,R02,R10,R11,R12,R20,R21,R22 = MatMul3(
-            A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22,
-            B.R00,B.R01,B.R02,B.R10,B.R11,B.R12,B.R20,B.R21,B.R22)
-        local PX = A.X + A.R00*B.X + A.R01*B.Y + A.R02*B.Z
-        local PY = A.Y + A.R10*B.X + A.R11*B.Y + A.R12*B.Z
-        local PZ = A.Z + A.R20*B.X + A.R21*B.Y + A.R22*B.Z
-        return NewCFrameRaw(PX, PY, PZ, R00,R01,R02,R10,R11,R12,R20,R21,R22)
-    end
-    return A:PointToWorldSpace(B) -- CFrame * Vector3-like -> world-space point
-end
-
-CFrameMeta.__add = function(A, B)
-    local BX, BY, BZ = ToXYZ(B)
-    return NewCFrameRaw(A.X+BX, A.Y+BY, A.Z+BZ, A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22)
-end
-
-CFrameMeta.__sub = function(A, B)
-    local BX, BY, BZ = ToXYZ(B)
-    return NewCFrameRaw(A.X-BX, A.Y-BY, A.Z-BZ, A.R00,A.R01,A.R02,A.R10,A.R11,A.R12,A.R20,A.R21,A.R22)
-end
-
-CFrameMeta.__eq = function(A, B)
-    if not IsCFrame(A) or not IsCFrame(B) then return false end
-    return A.X==B.X and A.Y==B.Y and A.Z==B.Z
-        and A.R00==B.R00 and A.R01==B.R01 and A.R02==B.R02
-        and A.R10==B.R10 and A.R11==B.R11 and A.R12==B.R12
-        and A.R20==B.R20 and A.R21==B.R21 and A.R22==B.R22
-end
-
-CFrameMeta.__tostring = function(self)
-    return table.concat({
-        self.X, self.Y, self.Z,
-        self.R00, self.R01, self.R02,
-        self.R10, self.R11, self.R12,
-        self.R20, self.R21, self.R22,
-    }, ", ")
-end
-
--- Best-effort: lets typeof(cf) == "CFrame" keep working for any code (this
--- file's own TweenService included) that type-checks that way. Luau support
--- for a table's __type isn't guaranteed everywhere, so TweenService below is
--- ALSO switched to Global.Function:IsCFrame(...) as the guaranteed-correct
--- check rather than relying on this alone.
-CFrameMeta.__type = "CFrame"
-
-CFrameLib.identity = NewCFrameRaw(0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-CFrame = CFrameLib
-_G.CFrame = CFrameLib
-Global.CFrame = CFrameLib
-
--- ReadPartCFrame(Part) -> a fully-functional CFrame (this implementation, not
--- Severe's broken native one) built from a live BasePart's current transform.
--- Reads Position/RightVector/UpVector/LookVector -- confirmed-reliable native
--- BasePart properties -- rather than touching the native .CFrame at all.
-function Global.Function:ReadPartCFrame(Part)
-    local Position, RightVector, UpVector, LookVector =
-        Part.Position, Part.RightVector, Part.UpVector, Part.LookVector
-    return CFrameLib.new(
-        Position.X, Position.Y, Position.Z,
-        RightVector.X, UpVector.X, -LookVector.X,
-        RightVector.Y, UpVector.Y, -LookVector.Y,
-        RightVector.Z, UpVector.Z, -LookVector.Z)
-end
-_G.ReadPartCFrame = function(Part) return Global.Function:ReadPartCFrame(Part) end
 
 -- // Property Registration \\ --
 
@@ -2199,12 +1694,12 @@ local function ComputeBoundingBox(Parts)
 
     for _, Part in Parts do
         if Part and BasePartClassSet[Part.ClassName] then
-            local PartCFrame = Part.CFrame
-            local Position = PartCFrame.Position
+            -- Read directly from the part; CFrame is unreliable in this environment.
+            local Position = Part.Position
             local Size = Part.Size
-            local Right = PartCFrame.RightVector
-            local Up = PartCFrame.UpVector
-            local Look = PartCFrame.LookVector
+            local Right = Part.RightVector
+            local Up = Part.UpVector
+            local Look = Part.LookVector
             local HX, HY, HZ = Size.X * 0.5, Size.Y * 0.5, Size.Z * 0.5
 
             for SignX = -1, 1, 2 do
@@ -2536,6 +2031,39 @@ _G.ResolveInstanceFunction = ResolveInstanceFunction
 
 local CachedMeshContentProvider -- resolved lazily, memoized while it stays parented
 
+-- Mesh-cache offsets. Resources/Offsets.lua carries two sets for the LRU node:
+-- the dumped LRUNode (CachedItem = 0x38) and the hand-set LruNode
+-- (CachedItem = 0x40), and only the hand-set CachedItem.FileMeshData (0x40).
+-- The node's CachedItem offset has to come from the same set as FileMeshData,
+-- so the hand-set Lru* names are preferred, falling back to the dumped
+-- LRU*/AABB* spellings only when those are missing.
+local function PickOffset(Namespaces, Fields)
+    for _, Namespace in Namespaces do
+        local Space = Offsets[Namespace]
+        for _, Field in Fields do
+            local Value = Space[Field]
+            if Value ~= nil then return Value end
+        end
+    end
+    return nil
+end
+
+local MeshOffsets = {
+    LruHolder = PickOffset({ "MeshContentProvider" }, { "LruHolder", "LRUHolder" }),
+    Cache = PickOffset({ "LruHolder", "LRUHolder" }, { "MemEnforcedLRUCache" }),
+    Head = PickOffset({ "MemEnforcedLRUCache" }, { "Head" }),
+    Next = PickOffset({ "LruNode", "LRUNode" }, { "Next" }),
+    AssetId = PickOffset({ "LruNode", "LRUNode" }, { "MeshId", "AssetID", "AssetId" }),
+    CachedItem = PickOffset({ "LruNode", "LRUNode" }, { "CachedItem" }),
+    FileMeshData = PickOffset({ "CachedItem" }, { "FileMeshData" }),
+    Vertices = PickOffset({ "FileMeshData" }, { "Vertices" }),
+    VerticesEnd = PickOffset({ "FileMeshData" }, { "VerticesEnd" }),
+    Faces = PickOffset({ "FileMeshData" }, { "Faces" }),
+    FacesEnd = PickOffset({ "FileMeshData" }, { "FacesEnd" }),
+    AabbMin = PickOffset({ "FileMeshData" }, { "AabbMin", "AABBMin" }),
+    AabbMax = PickOffset({ "FileMeshData" }, { "AabbMax", "AABBMax" }),
+}
+
 -- Finds the MeshContentProvider service. Not every class name responds to
 -- GetService the same way across environments, so this also falls back to
 -- scanning game's direct children by ClassName.
@@ -2575,10 +2103,10 @@ end
 -- with the native `buffer` library -- one round trip instead of one per float,
 -- which matters once a mesh has thousands of vertices.
 local function ReadFileMeshData(Address)
-    local VertexStart = Global.Function:ReadPointer(Address + Offsets.FileMeshData.Vertices)
-    local VertexEnd = Global.Function:ReadPointer(Address + Offsets.FileMeshData.VerticesEnd)
-    local FaceStart = Global.Function:ReadPointer(Address + Offsets.FileMeshData.Faces)
-    local FaceEnd = Global.Function:ReadPointer(Address + Offsets.FileMeshData.FacesEnd)
+    local VertexStart = Global.Function:ReadPointer(Address + MeshOffsets.Vertices)
+    local VertexEnd = Global.Function:ReadPointer(Address + MeshOffsets.VerticesEnd)
+    local FaceStart = Global.Function:ReadPointer(Address + MeshOffsets.Faces)
+    local FaceEnd = Global.Function:ReadPointer(Address + MeshOffsets.FacesEnd)
 
     if VertexStart == 0 or FaceStart == 0 or VertexEnd < VertexStart or FaceEnd < FaceStart then
         return nil
@@ -2619,11 +2147,38 @@ local function ReadFileMeshData(Address)
         }
     end
 
+    -- Bounds from the vertices the faces actually use. The stored AABB can be
+    -- larger than the drawn geometry (extra/unused vertices), and since the
+    -- MeshPart fits and centres the mesh by its bounds, a wrong AABB shifts and
+    -- scales the whole render -- the "slightly too far forward" offset. The
+    -- stored AABB is only a fallback.
+    local Huge = math.huge
+    local MinX, MinY, MinZ, MaxX, MaxY, MaxZ = Huge, Huge, Huge, -Huge, -Huge, -Huge
+    for _, Face in Faces do
+        for Corner = 1, 3 do
+            local V = Vertices[Face[Corner]]
+            if V then
+                if V.x < MinX then MinX = V.x end
+                if V.x > MaxX then MaxX = V.x end
+                if V.y < MinY then MinY = V.y end
+                if V.y > MaxY then MaxY = V.y end
+                if V.z < MinZ then MinZ = V.z end
+                if V.z > MaxZ then MaxZ = V.z end
+            end
+        end
+    end
+
+    local StoredMin = ReadVector3Absolute(Address + MeshOffsets.AabbMin)
+    local StoredMax = ReadVector3Absolute(Address + MeshOffsets.AabbMax)
+    local HasBounds = MinX <= MaxX
+
     return {
         Vertices = Vertices,
         Faces = Faces,
-        AabbMin = ReadVector3Absolute(Address + Offsets.FileMeshData.AabbMin),
-        AabbMax = ReadVector3Absolute(Address + Offsets.FileMeshData.AabbMax),
+        AabbMin = HasBounds and vector.create(MinX, MinY, MinZ) or StoredMin,
+        AabbMax = HasBounds and vector.create(MaxX, MaxY, MaxZ) or StoredMax,
+        StoredAabbMin = StoredMin,
+        StoredAabbMax = StoredMax,
     }
 end
 
@@ -2632,41 +2187,51 @@ end
 -- asset id, falling back to an exact string match) and returns its raw geometry.
 -- Returns nil if the mesh isn't currently cached (never rendered, or evicted
 -- since) or the required offsets aren't available.
+local MeshDataCache = {} -- MeshId -> parsed mesh, so each mesh is only walked/parsed once
+
 local function GetCachedMeshData(MeshId)
     if type(MeshId) ~= "string" or MeshId == "" then return nil end
-    if Offsets.MeshContentProvider.LruHolder == nil or Offsets.LruHolder.MemEnforcedLRUCache == nil
-        or Offsets.MemEnforcedLRUCache.Head == nil or Offsets.LruNode.Next == nil
-        or Offsets.LruNode.MeshId == nil or Offsets.LruNode.CachedItem == nil
-        or Offsets.CachedItem.FileMeshData == nil then
+
+    local Known = MeshDataCache[MeshId]
+    if Known then return Known end
+
+    if not (MeshOffsets.LruHolder and MeshOffsets.Cache and MeshOffsets.Head and MeshOffsets.Next
+        and MeshOffsets.AssetId and MeshOffsets.CachedItem and MeshOffsets.FileMeshData
+        and MeshOffsets.Vertices and MeshOffsets.Faces and MeshOffsets.AabbMin and MeshOffsets.AabbMax) then
         return nil
     end
 
     local Provider = GetMeshContentProvider()
     if not Provider then return nil end
 
-    local Holder = Global.Function:ReadU64Number(Provider, Offsets.MeshContentProvider.LruHolder)
+    local Holder = Global.Function:ReadU64Number(Provider, MeshOffsets.LruHolder)
     if Holder == 0 then return nil end
-    local Cache = Global.Function:ReadPointer(Holder + Offsets.LruHolder.MemEnforcedLRUCache)
+    local Cache = Global.Function:ReadPointer(Holder + MeshOffsets.Cache)
     if Cache == 0 then return nil end
-    local Sentinel = Global.Function:ReadPointer(Cache + Offsets.MemEnforcedLRUCache.Head)
+    local Sentinel = Global.Function:ReadPointer(Cache + MeshOffsets.Head)
     if Sentinel == 0 then return nil end
 
     local TargetId = NormalizeAssetId(MeshId)
-    local Node = Global.Function:ReadPointer(Sentinel + Offsets.LruNode.Next)
+    local Node = Global.Function:ReadPointer(Sentinel + MeshOffsets.Next)
 
     for _ = 1, 8192 do -- hard cap: never spin forever on a corrupt/broken ring
         if Node == 0 or Node == Sentinel then break end
 
-        local NodeMeshId = memory.readstring(Node + Offsets.LruNode.MeshId)
-        if NodeMeshId == MeshId or (TargetId and NormalizeAssetId(NodeMeshId) == TargetId) then
-            local Item = Global.Function:ReadPointer(Node + Offsets.LruNode.CachedItem)
+        local OkId, NodeMeshId = pcall(memory.readstring, Node + MeshOffsets.AssetId)
+        if OkId and (NodeMeshId == MeshId or (TargetId and NormalizeAssetId(NodeMeshId) == TargetId)) then
+            local Item = Global.Function:ReadPointer(Node + MeshOffsets.CachedItem)
             if Item == 0 then return nil end
-            local FileMeshData = Global.Function:ReadPointer(Item + Offsets.CachedItem.FileMeshData)
+            local FileMeshData = Global.Function:ReadPointer(Item + MeshOffsets.FileMeshData)
             if FileMeshData == 0 then return nil end
-            return ReadFileMeshData(FileMeshData)
+
+            local MeshData = ReadFileMeshData(FileMeshData)
+            if MeshData then
+                MeshDataCache[MeshId] = MeshData
+            end
+            return MeshData
         end
 
-        Node = Global.Function:ReadPointer(Node + Offsets.LruNode.Next)
+        Node = Global.Function:ReadPointer(Node + MeshOffsets.Next)
     end
 
     return nil -- not currently cached
@@ -2674,190 +2239,209 @@ end
 
 _G.GetCachedMeshData = GetCachedMeshData
 
--- // MeshContentProvider.Render -- live mesh wireframe rendering \\ --
--- Draws a live screen-space wireframe around a MeshPart, or every direct-child
--- MeshPart of a Model, built on GetCachedMeshData above: every triangle edge of
--- the mesh, drawn unconditionally (no facing test, no smoothing).
---   _G.MeshContentProvider.Render(Instance, { Color=, Thickness=, Opacity= })
+-- // MeshContentProvider.Render -- live mesh outline rendering \\ --
+-- Draws a live screen-space outline of a MeshPart, or of every direct-child
+-- MeshPart of a Model, built on GetCachedMeshData above.
+--   _G.MeshContentProvider.Render(Instance, { Color=, Thickness=, Opacity=, Mode= })
 --   _G.MeshContentProvider.Stop(Instance)
 --
--- When Instance is a Model, every direct-child MeshPart (GetChildren, not
--- GetDescendants -- cheaper, and a nested MeshPart under a sub-folder won't be
--- found; Render that sub-instance directly if needed) gets tracked and drawn
--- independently. Model children are rescanned every 1.8s for newly-added
--- MeshParts (e.g. an equipped tool); removed/destroyed parts are dropped as
--- soon as they're noticed, no need to wait for a rescan.
+-- Modes:
+--   "Silhouette" (default) -- works like a Highlight's outline: every tracked
+--       part is filled into one shared screen-space mask, and only the outer
+--       border of that mask is drawn. Parts that touch or overlap merge into a
+--       single connected outline, and nothing inside the shape is drawn.
+--   "Wireframe" -- every edge of every mesh.
 --
--- (A smooth front/back-facing silhouette mode was tried here and pulled for
--- now -- it worked but wasn't clean enough to ship. May come back later.)
+-- Instances can't be read inside RunService.Render, so the work is split:
+--   * PostLocal: validates the tracked parts and transforms each mesh's points
+--     into world space from the part's Position / Size / orientation vectors.
+--   * Render: projects those points, builds the mask and traces its border.
+--
+-- Silhouette doesn't need every triangle: each mesh gets a simplified copy
+-- (vertices clustered on a coarse grid in mesh space until at most
+-- Settings.SimplifyPoints remain, collapsed triangles dropped), built once per
+-- MeshId. That cuts the points projected and triangles filled per frame by
+-- several times, with little visible difference at outline scale.
+--
+-- Parts whose mesh isn't cached yet are retried every 1.8s, as are a Model's
+-- children (e.g. an equipped tool). Removed parts are dropped when noticed.
 
 local Camera = game.Workspace.CurrentCamera
 
-local RenderGroups = {} -- Instance (as passed to Render) -> GroupState
-local MeshTopologyCache = {} -- MeshId -> candidate edge list, shared by every group
+local RenderGroups = {}   -- Instance (as passed to Render) -> GroupState
+local WireframeCache = {} -- MeshId -> { Positions, Edges }
+local HullCache = {}      -- MeshId -> { Positions, Faces, FaceCount }
 
--- Packs two 1-based vertex indices (min, max) into one number so both windings
--- of the same edge collide to the same table key.
-local function MeshEdgeKey(A, B)
-    if A > B then A, B = B, A end
-    return A * 1000000 + B
+local Settings = {
+    SimplifyPoints = 300,    -- target point count for a mesh's silhouette copy
+    MaskMaxCells = 128,      -- mask cells across the group's longest on-screen side (detail vs cost)
+    MaskMinCell = 1.5,       -- smallest mask cell, in pixels
+}
+local MeshContentProvider = {}
+
+-- Mesh-space bounds of the vertices the faces use (see ReadFileMeshData).
+local function MeshExtent(MeshData)
+    local Min, Max = MeshData.AabbMin, MeshData.AabbMax
+    return Max.x - Min.x, Max.y - Min.y, Max.z - Min.z
 end
 
--- Roblox mesh vertex buffers commonly duplicate a vertex along a UV seam (the
--- front/back texture seam, the poles of a sphere-style UV mapping, the
--- boundary of a separate UV island like eyes/mouth on a head) -- the duplicate
--- sits at the EXACT SAME position but a DIFFERENT vertex index, since it needs
--- its own UV coordinate on that side of the seam. Edge adjacency built purely
--- from vertex indices treats every one of those seam edges as a false
--- "boundary" (the triangle on the other side reaches it through the duplicate
--- index, so this exact index pair only sees one face) -- and a boundary edge
--- is drawn unconditionally, producing seam rings/splits that have nothing to
--- do with the actual silhouette. Welding vertices that share a position
--- (within a tolerance scaled to the mesh's own AABB diagonal, so it adapts to
--- whatever unit scale a given mesh happens to be authored in) before building
--- the edge graph fixes it: both sides of a UV seam recognize each other as the
--- same vertex, so a real interior edge stays interior.
-local function WeldedMeshVertexIndex(MeshData)
-    local AabbMin, AabbMax = MeshData.AabbMin, MeshData.AabbMax
-    local DiagX, DiagY, DiagZ = AabbMax.x - AabbMin.x, AabbMax.y - AabbMin.y, AabbMax.z - AabbMin.z
-    local Diagonal = math.sqrt(DiagX * DiagX + DiagY * DiagY + DiagZ * DiagZ)
-    local CellSize = Diagonal > 0 and Diagonal * 0.0001 or 1e-5
+-- Clusters vertices that share a position (or, when CellSize is coarse, that
+-- fall in the same grid cell) into one point at their average position.
+-- Returns Positions (cluster -> local vector) and a mesh-vertex -> cluster map.
+local function ClusterVertices(MeshData, CellSize)
+    local Clusters = {}       -- key -> cluster index
+    local SumX, SumY, SumZ, Count = {}, {}, {}, {}
+    local ClusterOf = {}
 
-    local PositionToIndex = {}
-    local Welded = table.create(#MeshData.Vertices)
-
-    for Index, V in MeshData.Vertices do
-        local Key = math.floor(V.x / CellSize + 0.5) .. "|"
-            .. math.floor(V.y / CellSize + 0.5) .. "|"
-            .. math.floor(V.z / CellSize + 0.5)
-        local Canonical = PositionToIndex[Key]
-        if not Canonical then
-            Canonical = Index
-            PositionToIndex[Key] = Index
-        end
-        Welded[Index] = Canonical
-    end
-
-    return Welded
-end
-
--- Builds the deduplicated (welded) edge list once per mesh -- every entry gets
--- drawn unconditionally for the wireframe, so this is really just "every edge
--- of the mesh, without the duplicate-per-triangle-side redundancy." Pure
--- topology -- it never changes for a given mesh -- so it's built once per
--- MeshId and reused by every part/group that references that mesh.
-local function BuildMeshTopology(MeshData)
-    local Welded = WeldedMeshVertexIndex(MeshData)
-    local Edges = {} -- EdgeKey -> { A, B, Faces = { FaceIndex, ... } }
-
-    local function AddEdge(A, B, FaceIndex)
-        local WeldedA, WeldedB = Welded[A], Welded[B]
-        if WeldedA == WeldedB then return end -- degenerate: a sliver triangle at a seam corner
-        local Key = MeshEdgeKey(WeldedA, WeldedB)
-        local Edge = Edges[Key]
-        if not Edge then
-            Edge = { A = WeldedA, B = WeldedB, Faces = {} }
-            Edges[Key] = Edge
-        end
-        table.insert(Edge.Faces, FaceIndex)
-    end
-
-    for FaceIndex, Face in MeshData.Faces do
-        AddEdge(Face[1], Face[2], FaceIndex)
-        AddEdge(Face[2], Face[3], FaceIndex)
-        AddEdge(Face[3], Face[1], FaceIndex)
-    end
-
-    -- Skip edges shared by 3+ faces -- non-manifold (rare, usually a modeling
-    -- error in the source mesh) -- rather than guessing which to draw.
-    local Candidates = {}
-    for _, Edge in Edges do
-        if #Edge.Faces == 1 or #Edge.Faces == 2 then
-            table.insert(Candidates, Edge)
+    for _, Face in MeshData.Faces do
+        for Corner = 1, 3 do
+            local VertexIndex = Face[Corner]
+            if ClusterOf[VertexIndex] == nil then
+                local V = MeshData.Vertices[VertexIndex]
+                if V then
+                    local Key = math.floor(V.x / CellSize) .. "|" .. math.floor(V.y / CellSize) .. "|" .. math.floor(V.z / CellSize)
+                    local Cluster = Clusters[Key]
+                    if not Cluster then
+                        Cluster = #Count + 1
+                        Clusters[Key] = Cluster
+                        SumX[Cluster], SumY[Cluster], SumZ[Cluster], Count[Cluster] = 0, 0, 0, 0
+                    end
+                    SumX[Cluster] += V.x
+                    SumY[Cluster] += V.y
+                    SumZ[Cluster] += V.z
+                    Count[Cluster] += 1
+                    ClusterOf[VertexIndex] = Cluster
+                else
+                    ClusterOf[VertexIndex] = false
+                end
+            end
         end
     end
 
-    return Candidates
+    local Positions = table.create(#Count)
+    for Cluster = 1, #Count do
+        local N = Count[Cluster]
+        Positions[Cluster] = vector.create(SumX[Cluster] / N, SumY[Cluster] / N, SumZ[Cluster] / N)
+    end
+
+    return Positions, ClusterOf
 end
 
-local function GetMeshTopology(MeshId, MeshData)
-    local Cached = MeshTopologyCache[MeshId]
+-- Full edge list for Wireframe: vertices welded by exact position (so UV seams
+-- don't double up), edges deduplicated. Edges is flat { A1, B1, A2, B2, ... }.
+local function GetWireframe(MeshId, MeshData)
+    local Cached = WireframeCache[MeshId]
     if Cached then return Cached end
-    local Topology = BuildMeshTopology(MeshData)
-    MeshTopologyCache[MeshId] = Topology
-    return Topology
+
+    local ExtentX, ExtentY, ExtentZ = MeshExtent(MeshData)
+    local Diagonal = math.sqrt(ExtentX * ExtentX + ExtentY * ExtentY + ExtentZ * ExtentZ)
+    local Positions, ClusterOf = ClusterVertices(MeshData, Diagonal > 0 and Diagonal * 0.0001 or 1e-5)
+
+    local Seen, Edges = {}, {}
+    local function AddEdge(A, B)
+        if not A or not B or A == B then return end
+        if A > B then A, B = B, A end
+        local Key = A * 1000000 + B
+        if Seen[Key] then return end
+        Seen[Key] = true
+        Edges[#Edges + 1] = A
+        Edges[#Edges + 1] = B
+    end
+
+    for _, Face in MeshData.Faces do
+        local A, B, C = ClusterOf[Face[1]], ClusterOf[Face[2]], ClusterOf[Face[3]]
+        AddEdge(A, B)
+        AddEdge(B, C)
+        AddEdge(C, A)
+    end
+
+    Cached = { Positions = Positions, Edges = Edges }
+    WireframeCache[MeshId] = Cached
+    return Cached
 end
 
--- Reads a part's position/orientation/size out as plain numbers. CFrame itself
--- isn't usable in this environment (no operators, no :PointToWorldSpace) --
--- the local-mesh-space -> world-space transform below works off
--- Position/RightVector/UpVector/LookVector instead, which read fine as
--- ordinary properties.
-local function ReadPartBasis(Part)
-    local Position, RightVector, UpVector, LookVector, Size =
-        Part.Position, Part.RightVector, Part.UpVector, Part.LookVector, Part.Size
-    return {
-        PosX = Position.X, PosY = Position.Y, PosZ = Position.Z,
-        RightX = RightVector.X, RightY = RightVector.Y, RightZ = RightVector.Z,
-        UpX = UpVector.X, UpY = UpVector.Y, UpZ = UpVector.Z,
-        LookX = LookVector.X, LookY = LookVector.Y, LookZ = LookVector.Z,
-        SizeX = Size.X, SizeY = Size.Y, SizeZ = Size.Z,
-    }
+-- Simplified triangle set for Silhouette. Faces is flat { a1, b1, c1, ... }.
+local function GetHull(MeshId, MeshData)
+    local Cached = HullCache[MeshId]
+    if Cached then return Cached end
+
+    -- Coarsen the cluster grid until the copy has at most SimplifyPoints
+    -- points (starting at ~40 cells across the mesh's longest side). Done once
+    -- per mesh, so the search cost doesn't matter.
+    local ExtentX, ExtentY, ExtentZ = MeshExtent(MeshData)
+    local Longest = math.max(ExtentX, ExtentY, ExtentZ)
+    local CellSize = Longest > 0 and Longest / 40 or 1e-3
+    local Positions, ClusterOf = ClusterVertices(MeshData, CellSize)
+    for _ = 1, 12 do
+        if #Positions <= Settings.SimplifyPoints then break end
+        CellSize *= 1.25
+        Positions, ClusterOf = ClusterVertices(MeshData, CellSize)
+    end
+
+    local Seen, Faces, FaceCount = {}, {}, 0
+    for _, Face in MeshData.Faces do
+        local A, B, C = ClusterOf[Face[1]], ClusterOf[Face[2]], ClusterOf[Face[3]]
+        if A and B and C and A ~= B and B ~= C and C ~= A then
+            -- Same triangle from either winding/order only once.
+            local Low, Mid, High = A, B, C
+            if Low > Mid then Low, Mid = Mid, Low end
+            if Mid > High then Mid, High = High, Mid end
+            if Low > Mid then Low, Mid = Mid, Low end
+            local Key = Low .. "|" .. Mid .. "|" .. High
+            if not Seen[Key] then
+                Seen[Key] = true
+                FaceCount += 1
+                Faces[#Faces + 1] = A
+                Faces[#Faces + 1] = B
+                Faces[#Faces + 1] = C
+            end
+        end
+    end
+
+    Cached = { Positions = Positions, Faces = Faces, FaceCount = FaceCount }
+    HullCache[MeshId] = Cached
+    return Cached
 end
 
--- MeshPart auto-fits its authored geometry to `.Size`: the scale factor per
--- axis is Size / (AabbMax - AabbMin), and the mesh's own AABB center becomes
--- the part's origin. Returns a function from local mesh-space vertex (native
--- vector, from MeshData.Vertices) to world-space position (also native vector
--- -- Vector3 arithmetic in this environment degrades to native vector anyway,
--- which only exposes vector.cross()/vector.dot() as library functions, never
--- as colon methods, so everything stays in that type consistently).
-local function BuildMeshTransform(Basis, MeshData)
-    local AabbMin, AabbMax = MeshData.AabbMin, MeshData.AabbMax
+-- MeshPart fits its mesh to .Size by the mesh's bounds and centres the bounds on
+-- .Position. Orientation comes straight from the part's RightVector / UpVector /
+-- LookVector properties; CFrame isn't read (it's unreliable in this environment).
+local function TransformPoints(Part, MeshData, Points, Out)
+    local Position, Size = Part.Position, Part.Size
+    local Right, Up, Look = Part.RightVector, Part.UpVector, Part.LookVector
 
-    local ExtentX = AabbMax.x - AabbMin.x
-    local ExtentY = AabbMax.y - AabbMin.y
-    local ExtentZ = AabbMax.z - AabbMin.z
+    local RightX, RightY, RightZ = Right.X, Right.Y, Right.Z
+    local UpX, UpY, UpZ = Up.X, Up.Y, Up.Z
+    local LookX, LookY, LookZ = Look.X, Look.Y, Look.Z
+
+    local Min, Max = MeshData.AabbMin, MeshData.AabbMax
+    local ExtentX, ExtentY, ExtentZ = Max.x - Min.x, Max.y - Min.y, Max.z - Min.z
     if ExtentX == 0 then ExtentX = 1 end
     if ExtentY == 0 then ExtentY = 1 end
     if ExtentZ == 0 then ExtentZ = 1 end
 
-    local ScaleX, ScaleY, ScaleZ = Basis.SizeX / ExtentX, Basis.SizeY / ExtentY, Basis.SizeZ / ExtentZ
-    local CenterX = (AabbMin.x + AabbMax.x) * 0.5
-    local CenterY = (AabbMin.y + AabbMax.y) * 0.5
-    local CenterZ = (AabbMin.z + AabbMax.z) * 0.5
+    local ScaleX, ScaleY, ScaleZ = Size.X / ExtentX, Size.Y / ExtentY, Size.Z / ExtentZ
+    local CenterX, CenterY, CenterZ = (Min.x + Max.x) * 0.5, (Min.y + Max.y) * 0.5, (Min.z + Max.z) * 0.5
+    local PosX, PosY, PosZ = Position.X, Position.Y, Position.Z
 
-    return function(LocalVertex)
-        local PointX = (LocalVertex.x - CenterX) * ScaleX
-        local PointY = (LocalVertex.y - CenterY) * ScaleY
-        local PointZ = (LocalVertex.z - CenterZ) * ScaleZ
+    for Index, Point in Points do
+        local PointX = (Point.x - CenterX) * ScaleX
+        local PointY = (Point.y - CenterY) * ScaleY
+        local PointZ = (Point.z - CenterZ) * ScaleZ
 
-        -- Local +Z is -LookVector (Roblox's LookVector points down local -Z).
-        return vector.create(
-            Basis.PosX + Basis.RightX * PointX + Basis.UpX * PointY - Basis.LookX * PointZ,
-            Basis.PosY + Basis.RightY * PointX + Basis.UpY * PointY - Basis.LookY * PointZ,
-            Basis.PosZ + Basis.RightZ * PointX + Basis.UpZ * PointY - Basis.LookZ * PointZ
+        -- Local +Z is -LookVector (LookVector points down local -Z).
+        Out[Index] = vector.create(
+            PosX + RightX * PointX + UpX * PointY - LookX * PointZ,
+            PosY + RightY * PointX + UpY * PointY - LookY * PointZ,
+            PosZ + RightZ * PointX + UpZ * PointY - LookZ * PointZ
         )
     end
 end
 
-local function MeshContentProviderEnsureLines(PartState, Count, Options)
-    while #PartState.Lines < Count do
-        local NewLine = Line.new()
-        NewLine.Thickness = Options.Thickness or 1
-        NewLine.Color = Options.Color or vector.create(1, 1, 1)
-        NewLine.Opacity = Options.Opacity or 1
-        NewLine.Visible = false
-        table.insert(PartState.Lines, NewLine)
-    end
-end
-
--- Attempts to start tracking Part within Group (fetches its mesh from the
--- cache). No-ops (leaves it untracked) if the mesh isn't cached yet -- the
--- periodic Model rescan will retry it automatically since it stays absent from
--- Group.Parts until this succeeds.
+-- Starts tracking Part within Group if its mesh is cached; otherwise the next
+-- rescan tries again.
 local function MeshContentProviderTrackPart(Group, Part)
-    if Group.Parts[Part] then return end -- already tracked
+    if Group.Parts[Part] then return end
 
     local Ok, MeshId = pcall(function() return tostring(Part.MeshId) end)
     if not Ok then return end
@@ -2865,74 +2449,18 @@ local function MeshContentProviderTrackPart(Group, Part)
     local MeshData = GetCachedMeshData(MeshId)
     if not MeshData then return end
 
+    local Shape = Group.Options.Mode == "Wireframe" and GetWireframe(MeshId, MeshData) or GetHull(MeshId, MeshData)
+
     Group.Parts[Part] = {
-        MeshId = MeshId,
         MeshData = MeshData,
-        Lines = {},
+        Shape = Shape,
+        World = {},                       -- point -> world position (PostLocal)
+        ScreenX = {}, ScreenY = {}, Visible = {}, -- point -> screen position (Render)
+        Ready = false,
     }
 end
 
-local function MeshContentProviderRemovePart(Group, Part)
-    local PartState = Group.Parts[Part]
-    if not PartState then return end
-    for _, DrawLine in PartState.Lines do
-        pcall(function() DrawLine:Remove() end)
-    end
-    Group.Parts[Part] = nil
-end
-
-local function MeshContentProviderUpdateGroup(Group)
-    local Options = Group.Options
-
-    for Part, PartState in Group.Parts do
-        if Part and Part.Parent then
-            local Basis = ReadPartBasis(Part)
-            local ToWorld = BuildMeshTransform(Basis, PartState.MeshData)
-            local MeshData = PartState.MeshData
-            local WorldVertices = {}
-
-            local function WorldVertex(Index)
-                local Cached = WorldVertices[Index]
-                if Cached then return Cached end
-                local World = ToWorld(MeshData.Vertices[Index])
-                WorldVertices[Index] = World
-                return World
-            end
-
-            local Topology = GetMeshTopology(PartState.MeshId, MeshData)
-            local VisibleCount = 0
-
-            for _, Edge in Topology do
-                local WorldA, WorldB = WorldVertex(Edge.A), WorldVertex(Edge.B)
-                local ScreenA, OnScreenA = Camera:WorldToScreenPoint(WorldA)
-                local ScreenB, OnScreenB = Camera:WorldToScreenPoint(WorldB)
-
-                if OnScreenA and OnScreenB then
-                    VisibleCount += 1
-                    MeshContentProviderEnsureLines(PartState, VisibleCount, Options)
-                    local DrawLine = PartState.Lines[VisibleCount]
-                    DrawLine.From = vector.create(ScreenA.X, ScreenA.Y)
-                    DrawLine.To = vector.create(ScreenB.X, ScreenB.Y)
-                    DrawLine.Visible = true
-                end
-            end
-
-            for Index = VisibleCount + 1, #PartState.Lines do
-                PartState.Lines[Index].Visible = false
-            end
-        else
-            MeshContentProviderRemovePart(Group, Part)
-        end
-    end
-end
-
-local MeshContentProvider = {}
-
--- Resolves what Render(Instance, ...) should track: Instance itself if it's a
--- MeshPart, or every direct-child MeshPart if it's a Model (GetChildren, not
--- GetDescendants -- cheaper, and matches this project's existing preference,
--- see GetBoundingBox). A MeshPart nested under a sub-folder/sub-model won't be
--- found; call Render on that sub-instance directly if that's ever needed.
+-- Instance itself if it's a MeshPart, or every direct-child MeshPart of a Model.
 local function MeshContentProviderResolveParts(Instance)
     if typeof(Instance) ~= "Instance" then return nil end
 
@@ -2954,8 +2482,9 @@ local function MeshContentProviderResolveParts(Instance)
 end
 
 -- MeshContentProvider.Render(Instance, Options?) -- starts (or replaces) a live
--- wireframe render. Instance is a MeshPart or a Model. Options:
--- { Color = vector, Thickness = number, Opacity = number }.
+-- render. Instance is a MeshPart or a Model. Options:
+-- { Color = Color3 | vector, Thickness = number, Opacity = number,
+--   Mode = "Silhouette" (default) | "Wireframe" }.
 function MeshContentProvider.Render(Instance, Options)
     Options = Options or {}
 
@@ -2965,13 +2494,18 @@ function MeshContentProvider.Render(Instance, Options)
         return
     end
 
-    MeshContentProvider.Stop(Instance) -- replace any existing render on this Instance cleanly
+    MeshContentProvider.Stop(Instance)
 
     local Group = {
-        IsModel = Instance:IsA("Model"),
-        Options = Options,
+        Options = {
+            Color = Options.Color and Global.Function:ToComponents(Options.Color) or vector.create(1, 1, 1),
+            Thickness = Options.Thickness or 1,
+            Opacity = Options.Opacity or 1,
+            Mode = Options.Mode == "Wireframe" and "Wireframe" or "Silhouette",
+        },
         Parts = {},
         LastScan = os.clock(),
+        Alive = true,
     }
 
     for _, Part in Parts do
@@ -2981,51 +2515,337 @@ function MeshContentProvider.Render(Instance, Options)
     RenderGroups[Instance] = Group
 end
 
--- MeshContentProvider.Stop(Instance) -- stops and removes a render started with
--- Render(Instance, ...).
+-- MeshContentProvider.Stop(Instance) -- stops a render started with Render(Instance, ...).
 function MeshContentProvider.Stop(Instance)
-    local Group = RenderGroups[Instance]
-    if not Group then return end
-    for Part in Group.Parts do
-        MeshContentProviderRemovePart(Group, Part)
-    end
     RenderGroups[Instance] = nil
 end
 
-task.spawn(function()
-    while true do
-        local ToRemove -- collected during the loop, applied after -- never
-                        -- mutate RenderGroups while iterating it
+-- PostLocal: everything that reads instances or memory.
+local function MeshContentProviderUpdate()
+    local ToRemove
 
-        for Instance, Group in RenderGroups do
-            if Instance and Instance.Parent then
-                if Group.IsModel and os.clock() - Group.LastScan >= 1.8 then
-                    Group.LastScan = os.clock()
-                    for _, Child in Instance:GetChildren() do
-                        if Child:IsA("MeshPart") then
-                            MeshContentProviderTrackPart(Group, Child)
-                        end
+    for Instance, Group in RenderGroups do
+        local Ok, Err = pcall(function()
+            if not Instance.Parent then
+                Group.Alive = false
+                return
+            end
+
+            if os.clock() - Group.LastScan >= 1.8 then
+                Group.LastScan = os.clock()
+                local Parts = MeshContentProviderResolveParts(Instance)
+                if Parts then
+                    for _, Part in Parts do
+                        MeshContentProviderTrackPart(Group, Part)
                     end
                 end
+            end
 
-                local Ok, Err = pcall(MeshContentProviderUpdateGroup, Group)
-                if not Ok and not Group.ErrorPrinted then
-                    Group.ErrorPrinted = true
-                    warn("MeshContentProvider.Render: error updating -- " .. tostring(Err))
+            for Part, PartState in Group.Parts do
+                if Part.Parent then
+                    TransformPoints(Part, PartState.MeshData, PartState.Shape.Positions, PartState.World)
+                    PartState.Ready = true
+                else
+                    Group.Parts[Part] = nil
                 end
-            else
-                ToRemove = ToRemove or {}
-                table.insert(ToRemove, Instance)
+            end
+        end)
+
+        if not Ok and not Group.ErrorPrinted then
+            Group.ErrorPrinted = true
+            warn("MeshContentProvider.Render: error updating -- " .. tostring(Err))
+        end
+
+        if not Group.Alive then
+            ToRemove = ToRemove or {}
+            table.insert(ToRemove, Instance)
+        end
+    end
+
+    if ToRemove then
+        for _, Instance in ToRemove do
+            RenderGroups[Instance] = nil
+        end
+    end
+
+    Camera = game.Workspace.CurrentCamera or Camera
+end
+
+-- // Render \\ --
+
+local DrawLine = DrawingImmediate.Line
+
+-- Projects a part's world points; returns false if none are on screen, plus
+-- the on-screen bounds.
+local function ProjectPart(PartState, MinX, MinY, MaxX, MaxY)
+    local World, ScreenX, ScreenY, Visible = PartState.World, PartState.ScreenX, PartState.ScreenY, PartState.Visible
+    local Any = false
+
+    for Index = 1, #World do
+        local Screen, OnScreen = Camera:WorldToScreenPoint(World[Index])
+        local X, Y = Screen.X, Screen.Y
+        ScreenX[Index], ScreenY[Index], Visible[Index] = X, Y, OnScreen
+        if OnScreen then
+            Any = true
+            if X < MinX then MinX = X end
+            if X > MaxX then MaxX = X end
+            if Y < MinY then MinY = Y end
+            if Y > MaxY then MaxY = Y end
+        end
+    end
+
+    return Any, MinX, MinY, MaxX, MaxY
+end
+
+local function DrawWireframe(Group)
+    local Options = Group.Options
+    local Color, Opacity, Thickness = Options.Color, Options.Opacity, Options.Thickness
+
+    for _, PartState in Group.Parts do
+        if not PartState.Ready then continue end
+        if not ProjectPart(PartState, math.huge, math.huge, -math.huge, -math.huge) then continue end
+
+        local ScreenX, ScreenY, Visible = PartState.ScreenX, PartState.ScreenY, PartState.Visible
+        local Edges = PartState.Shape.Edges
+        for Index = 1, #Edges, 2 do
+            local A, B = Edges[Index], Edges[Index + 1]
+            if Visible[A] and Visible[B] then
+                DrawLine(vector.create(ScreenX[A], ScreenY[A]), vector.create(ScreenX[B], ScreenY[B]), Color, Opacity, Thickness)
+            end
+        end
+    end
+end
+
+-- Silhouette mask: one cell grid per group, reused frame to frame. A cell is
+-- "filled" when Mask[Index] == Stamp, so clearing is just bumping Stamp.
+-- RowMin/RowMax track the filled column range of each row, so tracing only
+-- walks the part of each row near the shape rather than the whole grid.
+local Mask, MaskStamp = {}, 0
+local RowMin, RowMax, RowStamp = {}, {}, {}
+local RunStartX = {} -- per column: start row of the vertical run being merged
+
+local function MarkRow(Row, From, To, Columns, Stamp)
+    local Base = Row * Columns + 1
+    for Column = From, To do
+        Mask[Base + Column] = Stamp
+    end
+    if RowStamp[Row] ~= Stamp then
+        RowStamp[Row], RowMin[Row], RowMax[Row] = Stamp, From, To
+    else
+        if From < RowMin[Row] then RowMin[Row] = From end
+        if To > RowMax[Row] then RowMax[Row] = To end
+    end
+end
+
+-- Scanline fill of the cells whose centres fall inside the triangle (grid
+-- units). Each row only touches the cells actually covered.
+local function FillTriangle(AX, AY, BX, BY, CX, CY, Columns, Rows, Stamp)
+    -- Sort by Y.
+    if AY > BY then AX, AY, BX, BY = BX, BY, AX, AY end
+    if BY > CY then BX, BY, CX, CY = CX, CY, BX, BY end
+    if AY > BY then AX, AY, BX, BY = BX, BY, AX, AY end
+
+    local Top = math.max(0, math.ceil(AY - 0.5))
+    local Bottom = math.min(Rows - 1, math.floor(CY - 0.5))
+
+    if Top > Bottom then
+        -- Thinner than a row: mark the cell under its middle point.
+        local Row, Column = math.floor(BY), math.floor(BX)
+        if Row >= 0 and Row < Rows and Column >= 0 and Column < Columns then
+            MarkRow(Row, Column, Column, Columns, Stamp)
+        end
+        return
+    end
+
+    local LongSpan = CY - AY
+    for Row = Top, Bottom do
+        local Y = Row + 0.5
+
+        -- X on the long edge (A->C) and on the short edge (A->B or B->C).
+        local LongX = LongSpan > 0 and AX + (CX - AX) * (Y - AY) / LongSpan or AX
+        local ShortX
+        if Y < BY then
+            local Span = BY - AY
+            ShortX = Span > 0 and AX + (BX - AX) * (Y - AY) / Span or BX
+        else
+            local Span = CY - BY
+            ShortX = Span > 0 and BX + (CX - BX) * (Y - BY) / Span or BX
+        end
+
+        local Left, Right = LongX, ShortX
+        if Left > Right then Left, Right = Right, Left end
+
+        local From = math.max(0, math.ceil(Left - 0.5))
+        local To = math.min(Columns - 1, math.floor(Right - 0.5))
+        if From > To then
+            -- Sliver narrower than a cell on this row: keep one cell.
+            local Column = math.floor((Left + Right) * 0.5)
+            if Column >= 0 and Column < Columns then
+                MarkRow(Row, Column, Column, Columns, Stamp)
+            end
+        else
+            MarkRow(Row, From, To, Columns, Stamp)
+        end
+    end
+end
+
+local function DrawSilhouette(Group)
+    local Options = Group.Options
+    local Color, Opacity, Thickness = Options.Color, Options.Opacity, Options.Thickness
+
+    -- 1. Project every part; bounds of the whole group on screen.
+    local MinX, MinY, MaxX, MaxY = math.huge, math.huge, -math.huge, -math.huge
+    local AnyVisible = false
+    for _, PartState in Group.Parts do
+        PartState.Drawn = false
+        if PartState.Ready then
+            local Any
+            Any, MinX, MinY, MaxX, MaxY = ProjectPart(PartState, MinX, MinY, MaxX, MaxY)
+            PartState.Drawn = Any
+            AnyVisible = AnyVisible or Any
+        end
+    end
+    if not AnyVisible then return end
+
+    -- 2. Size the mask to the group (one empty cell of margin on every side).
+    local Long = math.max(MaxX - MinX, MaxY - MinY)
+    local Cell = math.max(Settings.MaskMinCell, Long / Settings.MaskMaxCells)
+    local OriginX, OriginY = MinX - Cell * 1.5, MinY - Cell * 1.5
+    local Columns = math.floor((MaxX - MinX) / Cell) + 4
+    local Rows = math.floor((MaxY - MinY) / Cell) + 4
+
+    MaskStamp += 1
+    local Stamp = MaskStamp
+    local InverseCell = 1 / Cell
+
+    -- 3. Fill every part's triangles into the shared mask.
+    for _, PartState in Group.Parts do
+        if not PartState.Drawn then continue end
+
+        local ScreenX, ScreenY, Visible = PartState.ScreenX, PartState.ScreenY, PartState.Visible
+        local Faces = PartState.Shape.Faces
+        for Index = 1, #Faces, 3 do
+            local A, B, C = Faces[Index], Faces[Index + 1], Faces[Index + 2]
+            if Visible[A] and Visible[B] and Visible[C] then
+                FillTriangle(
+                    (ScreenX[A] - OriginX) * InverseCell, (ScreenY[A] - OriginY) * InverseCell,
+                    (ScreenX[B] - OriginX) * InverseCell, (ScreenY[B] - OriginY) * InverseCell,
+                    (ScreenX[C] - OriginX) * InverseCell, (ScreenY[C] - OriginY) * InverseCell,
+                    Columns, Rows, Stamp
+                )
+            end
+        end
+    end
+
+    -- 4. Trace the mask's border (marching squares over cell centres). Straight
+    --    horizontal and vertical stretches are merged into single lines.
+    local function ToScreen(U, V)
+        return vector.create(OriginX + (U + 0.5) * Cell, OriginY + (V + 0.5) * Cell)
+    end
+
+    table.clear(RunStartX)
+
+    for BlockY = 0, Rows - 2 do
+        local RowTop = BlockY * Columns + 1
+        local RowBottom = RowTop + Columns
+        local RunStart = nil -- horizontal run start column in this row
+
+        -- Blocks this row can produce border in: the filled range of either
+        -- row, widened by one. Any vertical run left open in a column outside
+        -- that range ends here.
+        local HasTop, HasBottom = RowStamp[BlockY] == Stamp, RowStamp[BlockY + 1] == Stamp
+        local From, To = Columns, -1
+        if HasTop then From, To = RowMin[BlockY], RowMax[BlockY] end
+        if HasBottom then
+            From = math.min(From, RowMin[BlockY + 1])
+            To = math.max(To, RowMax[BlockY + 1])
+        end
+        From, To = math.max(0, From - 1), math.min(Columns - 2, To)
+
+        for BlockX, StartY in RunStartX do
+            if BlockX < From or BlockX > To then
+                DrawLine(ToScreen(BlockX + 0.5, StartY), ToScreen(BlockX + 0.5, BlockY), Color, Opacity, Thickness)
+                RunStartX[BlockX] = nil
             end
         end
 
-        if ToRemove then
-            for _, Instance in ToRemove do
-                MeshContentProvider.Stop(Instance)
+        for BlockX = From, To do
+            local Case = (Mask[RowTop + BlockX] == Stamp and 8 or 0)
+                + (Mask[RowTop + BlockX + 1] == Stamp and 4 or 0)
+                + (Mask[RowBottom + BlockX + 1] == Stamp and 2 or 0)
+                + (Mask[RowBottom + BlockX] == Stamp and 1 or 0)
+
+            -- Horizontal stretch (cases 3 / 12): extend or start a run.
+            if Case == 3 or Case == 12 then
+                RunStart = RunStart or BlockX
+            elseif RunStart then
+                DrawLine(ToScreen(RunStart, BlockY + 0.5), ToScreen(BlockX, BlockY + 0.5), Color, Opacity, Thickness)
+                RunStart = nil
+            end
+
+            -- Vertical stretch (cases 6 / 9): extend or start a run in this column.
+            if Case == 6 or Case == 9 then
+                if not RunStartX[BlockX] then RunStartX[BlockX] = BlockY end
+            elseif RunStartX[BlockX] then
+                DrawLine(ToScreen(BlockX + 0.5, RunStartX[BlockX]), ToScreen(BlockX + 0.5, BlockY), Color, Opacity, Thickness)
+                RunStartX[BlockX] = nil
+            end
+
+            if Case == 0 or Case == 15 or Case == 3 or Case == 12 or Case == 6 or Case == 9 then continue end
+
+            -- Corner and diagonal pieces. Edge midpoints of the block:
+            local TopX, TopY = BlockX + 0.5, BlockY
+            local RightX, RightY = BlockX + 1, BlockY + 0.5
+            local BottomX, BottomY = BlockX + 0.5, BlockY + 1
+            local LeftX, LeftY = BlockX, BlockY + 0.5
+
+            if Case == 1 or Case == 14 then
+                DrawLine(ToScreen(LeftX, LeftY), ToScreen(BottomX, BottomY), Color, Opacity, Thickness)
+            elseif Case == 2 or Case == 13 then
+                DrawLine(ToScreen(BottomX, BottomY), ToScreen(RightX, RightY), Color, Opacity, Thickness)
+            elseif Case == 4 or Case == 11 then
+                DrawLine(ToScreen(TopX, TopY), ToScreen(RightX, RightY), Color, Opacity, Thickness)
+            elseif Case == 7 or Case == 8 then
+                DrawLine(ToScreen(LeftX, LeftY), ToScreen(TopX, TopY), Color, Opacity, Thickness)
+            elseif Case == 5 then
+                DrawLine(ToScreen(LeftX, LeftY), ToScreen(TopX, TopY), Color, Opacity, Thickness)
+                DrawLine(ToScreen(BottomX, BottomY), ToScreen(RightX, RightY), Color, Opacity, Thickness)
+            elseif Case == 10 then
+                DrawLine(ToScreen(TopX, TopY), ToScreen(RightX, RightY), Color, Opacity, Thickness)
+                DrawLine(ToScreen(LeftX, LeftY), ToScreen(BottomX, BottomY), Color, Opacity, Thickness)
             end
         end
 
-        task.wait()
+        if RunStart then
+            DrawLine(ToScreen(RunStart, BlockY + 0.5), ToScreen(To + 1, BlockY + 0.5), Color, Opacity, Thickness)
+        end
+    end
+
+    for BlockX, StartY in RunStartX do
+        DrawLine(ToScreen(BlockX + 0.5, StartY), ToScreen(BlockX + 0.5, Rows - 1), Color, Opacity, Thickness)
+    end
+end
+
+local function MeshContentProviderDraw()
+    if not Camera then return end
+
+    for _, Group in RenderGroups do
+        if Group.Options.Mode == "Wireframe" then
+            DrawWireframe(Group)
+        else
+            DrawSilhouette(Group)
+        end
+    end
+end
+
+MeshContentProvider.Settings = Settings
+
+RunService.PostLocal:Connect(MeshContentProviderUpdate)
+RunService.Render:Connect(function()
+    local Ok, Err = pcall(MeshContentProviderDraw)
+    if not Ok and not MeshContentProvider.DrawErrorPrinted then
+        MeshContentProvider.DrawErrorPrinted = true
+        warn("MeshContentProvider.Render: error drawing -- " .. tostring(Err))
     end
 end)
 
@@ -3147,7 +2967,7 @@ function Global.Tween:Create(Object, Info, Goals)
     -- position> }. X may be a CFrame (use its .Position) or a plain Vector3.
     if Goals.CFrame ~= nil then
         local Value = Goals.CFrame
-        local Position = Global.Function:IsCFrame(Value) and Value.Position or Value
+        local Position = typeof(Value) == "CFrame" and Value.Position or Value
         local Rewritten = {}
         for Key, Goal in Goals do
             if Key ~= "CFrame" then
