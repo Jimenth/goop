@@ -442,58 +442,152 @@ local Library do
         if Cache.ZIndex ~= ZIndex then Object.ZIndex = ZIndex; Cache.ZIndex = ZIndex end
     end
 
+    -- // Text Measuring \\ --
+    -- Measuring text by setting it on a Text object and reading TextBounds straight
+    -- back can return a previous string's size, because the native side updates
+    -- later. That made labels drift off-centre and the watermark flick thin. Now:
+    --   * GetTextBounds returns a cached, verified size when it has one. For a
+    --     string it hasn't measured yet it returns an estimate (from the average
+    --     character width of what it has measured) and queues a real measurement.
+    --   * Queued strings are measured with DrawingImmediate.GetTextBounds inside
+    --     RunService.Render (it's a DrawingImmediate function, so that's where it's
+    --     guaranteed to work). No instances are read there.
+    --   * If that isn't available or fails, hidden Text objects measure instead:
+    --     each is given one string, and its TextBounds is only trusted once it has
+    --     read the same value on two frames in a row.
+
     local MeasureText = NewDrawing("Text", { Visible = false })
 
-    -- Text measuring. DrawingImmediate.GetTextBounds computes bounds directly,
-    -- so it's used when available. The fallback (setting Text on a hidden Text
-    -- object and reading TextBounds) can return the *previous* text's bounds
-    -- when the native side hasn't updated yet, which is what left some labels
-    -- off-centre; so only the direct results are cached, keyed by
-    -- font/size/text and cleared if the cache grows large.
     local BoundsCache = { }
     local BoundsCacheCount = 0
+    local PendingMeasure = { }   -- Key -> { Font, Size, Text, Assigned }
+    local PendingCount = 0
+    local FontMetrics = { }      -- "Font\0Size" -> { Chars, Width, Height }
 
-    local ImmediateBounds = nil
-    do
-        local Measure = DrawingImmediate and DrawingImmediate.GetTextBounds
-        if Measure then
-            local Ok, Result = pcall(Measure, Library.Font, Library.FontSize, "Test")
-            if Ok and Result and type(Result.X) == "number" and Result.X > 0 then
-                ImmediateBounds = Measure
-            end
+    local ImmediateMeasure = DrawingImmediate and DrawingImmediate.GetTextBounds
+    local ImmediateFailed = ImmediateMeasure == nil
+
+    local function MetricKey(Font, Size)
+        return tostring(Font) .. "\0" .. Size
+    end
+
+    local function ValidBounds(Bounds, Text)
+        return Bounds ~= nil and type(Bounds.X) == "number" and Bounds.X == Bounds.X
+            and (Text == "" or Bounds.X > 0)
+    end
+
+    local function StoreBounds(Key, Job, Bounds)
+        if BoundsCacheCount >= 2048 then
+            table.clear(BoundsCache)
+            BoundsCacheCount = 0
         end
+        if not BoundsCache[Key] then
+            BoundsCacheCount = BoundsCacheCount + 1
+        end
+        BoundsCache[Key] = Bounds
+
+        if PendingMeasure[Key] then
+            PendingMeasure[Key] = nil
+            PendingCount = PendingCount - 1
+        end
+
+        local Text = Job[3]
+        if #Text > 0 then
+            local MKey = MetricKey(Job[1], Job[2])
+            local Metrics = FontMetrics[MKey]
+            if not Metrics then
+                Metrics = { Chars = 0, Width = 0, Height = 0 }
+                FontMetrics[MKey] = Metrics
+            end
+            if Metrics.Chars < 4096 then
+                Metrics.Chars = Metrics.Chars + #Text
+                Metrics.Width = Metrics.Width + Bounds.X
+            end
+            Metrics.Height = Bounds.Y
+        end
+    end
+
+    local function EstimateBounds(Font, Size, Text)
+        local Metrics = FontMetrics[MetricKey(Font, Size)]
+        if Metrics and Metrics.Chars > 0 then
+            return Vector2New(#Text * Metrics.Width / Metrics.Chars, Metrics.Height)
+        end
+        return Vector2New(#Text * Size * 0.5, Size)
     end
 
     local function GetTextBounds(Text, Size)
         Text = tostring(Text)
         Size = Size or Library.FontSize
+        local Font = Library.Font
 
-        if ImmediateBounds then
-            local Key = tostring(Library.Font) .. "\0" .. Size .. "\0" .. Text
-            local Cached = BoundsCache[Key]
-            if Cached then
-                return Cached
-            end
-
-            local Ok, Bounds = pcall(ImmediateBounds, Library.Font, Size, Text)
-            if Ok and Bounds then
-                if BoundsCacheCount >= 2048 then
-                    BoundsCache = { }
-                    BoundsCacheCount = 0
-                end
-                BoundsCache[Key] = Bounds
-                BoundsCacheCount = BoundsCacheCount + 1
-                return Bounds
-            end
+        local Key = MetricKey(Font, Size) .. "\0" .. Text
+        local Cached = BoundsCache[Key]
+        if Cached then
+            return Cached
         end
 
-        -- Fallback: measured fresh every call, never cached.
-        UpdateDrawing(MeasureText, {
-            Text = Text,
-            Size = Size,
-            Font = Library.Font,
-        })
-        return MeasureText.TextBounds
+        if not PendingMeasure[Key] and PendingCount < 512 then
+            PendingMeasure[Key] = { Font, Size, Text, false }
+            PendingCount = PendingCount + 1
+        end
+
+        return EstimateBounds(Font, Size, Text)
+    end
+
+    -- Measures everything queued, via DrawingImmediate (called from RunService.Render).
+    function Library.MeasurePendingImmediate()
+        if ImmediateFailed or PendingCount == 0 then return end
+
+        for Key, Job in PendingMeasure do
+            local Ok, Bounds = pcall(ImmediateMeasure, Job[1], Job[2], Job[3])
+            if Ok and ValidBounds(Bounds, Job[3]) then
+                StoreBounds(Key, Job, Vector2New(Bounds.X, Bounds.Y))
+            else
+                -- Not usable here; switch to the Text-object measurers for good.
+                ImmediateFailed = true
+                return
+            end
+        end
+    end
+
+    -- Fallback measurers (called once per interface frame).
+    local Measurers = { { Object = MeasureText } }
+    for Index = 2, 8 do
+        Measurers[Index] = { Object = NewDrawing("Text", { Visible = false }) }
+    end
+
+    function Library.MeasurePendingFallback()
+        if not ImmediateFailed then return end
+
+        local Frame = Library.FrameId
+        for _, Measurer in Measurers do
+            local Job = Measurer.Job
+            if Job then
+                if PendingMeasure[Measurer.Key] ~= Job then
+                    Measurer.Job, Measurer.Key, Measurer.LastX = nil, nil, nil
+                elseif Frame - Measurer.SetFrame >= 1 then
+                    local Bounds = Measurer.Object.TextBounds
+                    if ValidBounds(Bounds, Job[3]) and Bounds.X == Measurer.LastX and Bounds.Y == Measurer.LastY then
+                        StoreBounds(Measurer.Key, Job, Vector2New(Bounds.X, Bounds.Y))
+                        Measurer.Job, Measurer.Key, Measurer.LastX = nil, nil, nil
+                    elseif Bounds then
+                        Measurer.LastX, Measurer.LastY = Bounds.X, Bounds.Y
+                    end
+                end
+            end
+
+            if not Measurer.Job and PendingCount > 0 then
+                for Key, Pending in PendingMeasure do
+                    if not Pending[4] then
+                        Pending[4] = true
+                        Measurer.Job, Measurer.Key, Measurer.SetFrame = Pending, Key, Frame
+                        Measurer.LastX, Measurer.LastY = nil, nil
+                        UpdateDrawing(Measurer.Object, { Font = Pending[1], Size = Pending[2], Text = Pending[3] })
+                        break
+                    end
+                end
+            end
+        end
     end
 
     -- ZIndex bands. Within a window: chrome < sections < elements < popups.
@@ -3073,7 +3167,9 @@ local Library do
         if not WM or not WM.Visible then return end
 
         local Text = WM.Name .. "  |  " .. MathFloor(get_overlay_fps()) .. " FPS"
-        local Bounds = GetTextBounds(Text)
+        -- Sized from the text with every digit as "0", so the box only changes
+        -- width when the FPS gains or loses a digit, not on every update.
+        local Bounds = GetTextBounds((Text:gsub("%d", "0")))
         local Width = MathCeil(Bounds.X) + 20
         local Height = MathMax(22, MathCeil(Bounds.Y) + 10)
 
@@ -3393,6 +3489,7 @@ local Library do
                 end
 
                 SweepScopes()
+                Library.MeasurePendingFallback()
             end)
 
             task.wait(0)
@@ -3493,6 +3590,13 @@ local Library do
         end
     end
 
+    -- Text measuring via DrawingImmediate (see "Text Measuring" above). This
+    -- touches no instances, so it's allowed inside Render.
+    RunService.Render:Connect(function()
+        if Library.Unloaded then return end
+        Library.MeasurePendingImmediate()
+    end)
+
     -- Overlay task
     task.spawn(function()
         local LastFrame = -1
@@ -3526,7 +3630,9 @@ local Library do
             Reserve[Kind] = { }
         end
 
-        MeasureText:Remove()
+        for _, Measurer in Measurers do
+            Measurer.Object:Remove()
+        end
     end
 end
 
