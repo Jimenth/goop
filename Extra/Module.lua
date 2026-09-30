@@ -4,8 +4,8 @@
     Extends the memory-backed Instance API with additional Roblox-accurate
     properties and methods that the environment doesn't expose natively.
 
-    Property / method names follow Roblox exactly (PascalCase), e.g. the offset
-    key `Walkspeed` is surfaced as the Roblox property `WalkSpeed`.
+    Property / method names follow Roblox exactly (PascalCase), e.g.
+    Humanoid.WalkSpeed (also available as Humanoid.Walkspeed).
 
     Layout:
       Global.Function   - internal helpers and declaration drivers.
@@ -175,7 +175,10 @@ local Global = {
                 MaxHealth = Offsets.Humanoid.MaxHealth,
                 MaxSlopeAngle = Offsets.Humanoid.MaxSlopeAngle,
                 NameDisplayDistance = Offsets.Humanoid.NameDisplayDistance,
-                WalkSpeed = Offsets.Humanoid.Walkspeed,
+                -- Read from the source's `WalkSpeed` offset, exposed under both
+                -- spellings so `.WalkSpeed` and `.Walkspeed` both work.
+                WalkSpeed = Offsets.Humanoid.WalkSpeed,
+                Walkspeed = Offsets.Humanoid.WalkSpeed,
             },
             ClickDetector = {
                 MaxActivationDistance = Offsets.ClickDetector.MaxActivationDistance,
