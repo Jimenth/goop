@@ -141,3 +141,8 @@ Notoriety
 + Fixed Hunting Season Support
 + Fixed Emergency Response Liberty County Support
 ```
+
+9/30/26
+```
++ Fixed Multicrew Tank Combat Support & Performance
+```
