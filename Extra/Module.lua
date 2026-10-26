@@ -621,7 +621,6 @@ local Global = {
 
         Enum = {
             Humanoid = {
-                DisplayDistanceType = { Offset = Offsets.Humanoid.DisplayDistanceType, EnumType = Enum.HumanoidDisplayDistanceType },
                 HealthDisplayType = { Offset = Offsets.Humanoid.HealthDisplayType, EnumType = Enum.HumanoidHealthDisplayType },
                 NameOcclusion = { Offset = Offsets.Humanoid.NameOcclusion, EnumType = Enum.NameOcclusion },
                 RigType = { Offset = Offsets.Humanoid.RigType, EnumType = Enum.HumanoidRigType },
