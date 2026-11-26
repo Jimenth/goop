@@ -17,7 +17,6 @@ local Module = {
     Stored = {
         Vehicles = {},
         Drones = {},
-        Armor = {},
 
         Viewport = Workspace.CurrentCamera.ViewportSize,
         LocalTeam = nil,
@@ -58,8 +57,6 @@ local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
 local VehiclesSection = VisualsTab:Section({Name = "Vehicles", Side = 1})
 local ModulesSection = VisualsTab:Section({Name = "Modules", Side = 2})
 
-local ExploitsSection = ExploitsTab:Section({Name = "Exploits", Side = 1})
-
 -- // Vehicles Section \\ --
 
 VehiclesSection:Toggle({Name = "Enabled", Flag = "Render Vehicles", Default = false, Callback = function(Value) end})
@@ -78,16 +75,6 @@ ModulesSection:Toggle({Name = "Render Engine", Flag = "Vehicle Engine", Default 
 ModulesSection:Separator()
 
 ModulesSection:Toggle({Name = "Render Drones", Flag = "Render Drones", Default = false, Callback = function(Value) end}):ColorPicker({Name = "Drone", Flag = "Drone Color", Default = Color3.fromRGB(255, 255, 255), Callback = function(Color) end})
-
--- // Exploits Section \\ --
-
-ExploitsSection:Toggle({Name = "Disable Armor", Flag = "Disable Armor", Default = false, Callback = function(Value)
-    if Value then
-        Module.Function:ScanArmor()
-    else
-        Module.Function:RestoreArmor()
-    end
-end})
 
 -- // Functions \\ --
 
@@ -446,54 +433,6 @@ function Module.Function:DroneCache()
     end
 end
 
-function Module.Function:ScanArmor()
-    if not Library.Flags["Disable Armor"] then return end
-    if not Module.Game.Vehicles then return end
-
-    local Cache = Module.Stored.Armor
-
-    for _, Vehicle in Module.Game.Vehicles:GetChildren() do
-        pcall(function()
-            if Vehicle.Name == "DONOT" or Vehicle.ClassName ~= "Model" then return end
-
-            local Values = Cache[Vehicle]
-            if not Values then
-                Values = {}
-                for _, Item in Vehicle:GetDescendants() do
-                    if Item:IsA("NumberValue") and Item.Name == "ArmourValue" then
-                        Values[Item] = Item.Value
-                    end
-                end
-                Cache[Vehicle] = Values
-            end
-            for ValueObject, _ in Values do
-                if ValueObject.Parent and ValueObject.Value ~= 0 then
-                    ValueObject.Value = 0
-                end
-            end
-        end)
-    end
-
-    for Vehicle in Cache do
-        if not Vehicle.Parent then
-            Cache[Vehicle] = nil
-        end
-    end
-end
-
-function Module.Function:RestoreArmor()
-    local Cache = Module.Stored.Armor
-
-    for Vehicle, Values in Cache do
-        for ValueObject, Original in Values do
-            if ValueObject and ValueObject.Parent then
-                ValueObject.Value = Original
-            end
-        end
-        Cache[Vehicle] = nil
-    end
-end
-
 function Module.Function.UpdateTargets()
     local Stored = Module.Stored
 
@@ -652,15 +591,6 @@ task.spawn(function()
         pcall(Module.Function.VehicleCache, Module.Function)
         pcall(Module.Function.DroneCache, Module.Function)
         pcall(Module.Function.OccupiedCache, Module.Function)
-    end
-end)
-
-task.spawn(function()
-    while true do
-        task.wait(5)
-        if Library.Flags["Disable Armor"] then
-            pcall(Module.Function.ScanArmor, Module.Function)
-        end
     end
 end)
 
