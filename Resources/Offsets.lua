@@ -1,11 +1,52 @@
-local Version = game:GetClientVersion()
-local Source = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Offsets/" .. Version .. "/Offsets.hpp"
+local Version = tostring(game:GetClientVersion())
+local MainSource = "https://raw.githubusercontent.com/Jimenth/goop/refs/heads/main/Extra/Offsets/{Version}/Offsets.hpp"
+
+local Sources = {
+    "https://getvexor.fyi/offsets.hpp"
+}
 
 local Offsets = {}
 
-local function ParseSource(Response)
+--// Helpers
+
+local function Notify(Message)
+    send_notification("Offsets: " .. Message, "warning")
+end
+
+local function Expand(Url)
+    return (Url:gsub("{Version}", function()
+        return Version
+    end))
+end
+
+local function Fetch(Url)
+    local Ok, Response = pcall(function()
+        return game:HttpGet(Url)
+    end)
+
+    if Ok and type(Response) == "string" and #Response > 0 then
+        return Response
+    end
+
+    return nil
+end
+
+local function VersionMatches(Embedded)
+    if not Embedded or not Version then
+        return true
+    end
+
+    return Embedded == Version
+        or Embedded:find(Version, 1, true) ~= nil
+        or Version:find(Embedded, 1, true) ~= nil
+end
+
+--// Parser
+
+local function ParseInto(Target, Response)
     local Stack = {}
     local Current = nil
+    local Added = 0
 
     local function Resolve()
         for Index = #Stack, 1, -1 do
@@ -13,24 +54,28 @@ local function ParseSource(Response)
                 return Stack[Index]
             end
         end
+
         return nil
     end
 
     for Line in Response:gmatch("[^\r\n]+") do
-        local Namespace = Line:match("^%s*namespace%s+(%w+)%s*{")
+        local Namespace = Line:match("^%s*namespace%s+([%w_]+)%s*{")
+
         if Namespace then
             table.insert(Stack, Namespace)
             Current = Resolve()
+
             if Current then
-                Offsets[Current] = Offsets[Current] or {}
+                Target[Current] = Target[Current] or {}
             end
         end
 
         if Current then
-            local Name, Hex = Line:match("inline%s+constexpr%s+uintptr_t%s+(%w+)%s*=%s*(0x%x+)")
-            
-            if Name and Hex and Offsets[Current][Name] == nil then
-                Offsets[Current][Name] = tonumber(Hex)
+            local Name, Hex = Line:match("inline%s+constexpr%s+uintptr_t%s+([%w_]+)%s*=%s*(0x%x+)")
+
+            if Name and Target[Current][Name] == nil then
+                Target[Current][Name] = tonumber(Hex)
+                Added += 1
             end
         end
 
@@ -39,34 +84,51 @@ local function ParseSource(Response)
             Current = Resolve()
         end
     end
+
+    return Added
 end
 
-local function VersionMatches(Embedded)
-    if not Embedded or not Version then
-        return true
+--// Loader
+
+local function Load(Template)
+    local Url = Expand(Template)
+    local Response = Fetch(Url)
+
+    if not Response then
+        Notify("failed to fetch -- " .. Url)
+        return 0
     end
-    local Target = tostring(Version)
-    return Embedded == Target or Embedded:find(Target, 1, true) ~= nil or Target:find(Embedded, 1, true) ~= nil
+
+    local Embedded = Response:match('roblox_version%s*=%s*"([^"]+)"')
+
+    if not VersionMatches(Embedded) then
+        Notify(("%s reports version %s but expected %s -- using it anyway"):format(Url, tostring(Embedded), Version))
+    end
+
+    local Added = ParseInto(Offsets, Response)
+
+    if Added == 0 then
+        Notify("fetched " .. Url .. " but no offsets were parsed out of it")
+    end
+
+    return Added
 end
 
-local Ok, Response = pcall(function()
-    return game:HttpGet(Source)
-end)
+if Load(MainSource) == 0 then
+    local Seen = { [Expand(MainSource)] = true }
 
-if not Ok or not Response or #Response == 0 then
-    send_notification("Offsets: failed to fetch -- " .. Source, "warning")
-    return nil
+    for _, Template in ipairs(Sources) do
+        local Url = Expand(Template)
+
+        if not Seen[Url] then
+            Seen[Url] = true
+            Load(Template)
+        end
+    end
 end
-
-local Embedded = Response:match('roblox_version%s*=%s*"([^"]+)"')
-if not VersionMatches(Embedded) then
-    send_notification("Offsets: fetched file reports version " .. tostring(Embedded) .. " but expected " .. tostring(Version) .. " -- using it anyway", "warning")
-end
-
-ParseSource(Response)
 
 if next(Offsets) == nil then
-    send_notification("Offsets: fetched successfully but no offsets were parsed out of it", "warning")
+    Notify("no offsets could be loaded from any source")
     return nil
 end
 
