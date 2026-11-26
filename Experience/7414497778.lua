@@ -52,7 +52,6 @@ local Polyline = DrawingImmediate.Polyline
 local Window = Library:Window({Name = "Goop | Multicrew Tank Combat", Size = Vector2.new(550, 600)})
 
 local VisualsTab = Window:Page({Name = "Visuals", Columns = 2})
-local ExploitsTab = Window:Page({Name = "Exploits", Columns = 2})
 
 local VehiclesSection = VisualsTab:Section({Name = "Vehicles", Side = 1})
 local ModulesSection = VisualsTab:Section({Name = "Modules", Side = 2})
